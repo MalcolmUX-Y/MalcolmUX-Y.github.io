@@ -7,63 +7,213 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="page">
-    <header class="hero">
-      <p class="eyebrow">AI-assisted semester planning</p>
-      <h1>StudyFlow AI</h1>
-      <p class="intro">
-        Turn messy semester information into a clear, structured study flow.
-      </p>
-    </header>
-
-    <main class="grid">
-      <section class="card input-card">
-        <h2>Paste semester plan</h2>
-        <p class="muted">
-          Insert raw course text, reading lists, deadlines, or weekly plans.
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-block">
+        <p class="eyebrow">UX case prototype</p>
+        <h1>StudyFlow AI</h1>
+        <p class="brand-copy">
+          A structured semester dashboard for reducing fragmented study information.
         </p>
+      </div>
 
-        <textarea id="semesterInput" placeholder="Example:
-Week 3
-Reading: Chapter 4 + Article 'Digital Overload'
-Assignment: Reflection paper due March 14
-Lecture: Tuesday 10:00-12:00"></textarea>
-
-        <button id="generateBtn">Generate study plan</button>
-      </section>
-
-      <section class="card output-card">
-        <div class="output-top">
-          <h2>Structured output</h2>
-          <span class="status">Prototype</span>
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Course setup</h2>
+          <p>Define the course context once.</p>
         </div>
 
-        <div id="output">
-          <div class="placeholder">
-            <p>Your structured study plan will appear here.</p>
+        <form id="courseForm" class="form-grid">
+          <label>
+            <span>Course title</span>
+            <input type="text" id="courseTitle" placeholder="Information Architecture" />
+          </label>
+
+          <label>
+            <span>Semester start</span>
+            <input type="date" id="semesterStart" />
+          </label>
+
+          <label>
+            <span>Semester end</span>
+            <input type="date" id="semesterEnd" />
+          </label>
+
+          <label>
+            <span>Lecture schedule</span>
+            <input type="text" id="lectureSchedule" placeholder="Tuesday 10:00–12:00" />
+          </label>
+
+          <label class="full-width">
+            <span>Course note</span>
+            <textarea id="courseNote" rows="3" placeholder="Optional context, focus area, or course description"></textarea>
+          </label>
+
+          <div class="button-row full-width">
+            <button type="submit" class="btn btn-primary">Save course</button>
+            <button type="button" id="resetAllBtn" class="btn btn-secondary">Reset all</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Add week</h2>
+          <p>Build the semester as structured weekly units.</p>
+        </div>
+
+        <form id="weekForm" class="form-grid">
+          <label>
+            <span>Week</span>
+            <input type="number" id="weekNumber" min="1" placeholder="3" required />
+          </label>
+
+          <label>
+            <span>Date</span>
+            <input type="date" id="weekDate" />
+          </label>
+
+          <label class="full-width">
+            <span>Reading</span>
+            <textarea id="weekReading" rows="3" placeholder="Chapter 4, Article: Digital Overload"></textarea>
+          </label>
+
+          <label class="full-width">
+            <span>Lecture / activity</span>
+            <input type="text" id="weekLecture" placeholder="Lecture, seminar, workshop, group work" />
+          </label>
+
+          <label class="full-width">
+            <span>Assignment / task</span>
+            <input type="text" id="weekTask" placeholder="Reflection paper draft" />
+          </label>
+
+          <label>
+            <span>Deadline</span>
+            <input type="date" id="weekDeadline" />
+          </label>
+
+          <label>
+            <span>Estimated hours</span>
+            <input type="number" id="weekHours" min="0" step="0.5" placeholder="4" />
+          </label>
+
+          <label class="full-width">
+            <span>Priority</span>
+            <select id="weekPriority">
+              <option value="Normal">Normal</option>
+              <option value="High">High</option>
+              <option value="Critical">Critical</option>
+            </select>
+          </label>
+
+          <div class="button-row full-width">
+            <button type="submit" class="btn btn-primary">Add week</button>
+            <button type="button" id="clearWeekFormBtn" class="btn btn-secondary">Clear fields</button>
+          </div>
+        </form>
+      </section>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Semester overview</p>
+          <h2 id="dashboardCourseTitle">No course selected</h2>
+          <p id="dashboardCourseMeta" class="muted">
+            Save a course setup to populate the dashboard.
+          </p>
+        </div>
+      </header>
+
+      <section class="summary-grid">
+        <article class="summary-card">
+          <p class="summary-label">Next task</p>
+          <h3 id="nextTaskTitle">No tasks yet</h3>
+          <p id="nextTaskMeta" class="muted">Add a week to generate structure.</p>
+        </article>
+
+        <article class="summary-card">
+          <p class="summary-label">Nearest deadline</p>
+          <h3 id="nearestDeadlineTitle">No deadlines yet</h3>
+          <p id="nearestDeadlineMeta" class="muted">Deadlines will appear here.</p>
+        </article>
+
+        <article class="summary-card">
+          <p class="summary-label">Total workload</p>
+          <h3 id="totalWorkloadTitle">0 hours</h3>
+          <p id="totalWorkloadMeta" class="muted">Across all added weeks.</p>
+        </article>
+
+        <article class="summary-card">
+          <p class="summary-label">Weeks planned</p>
+          <h3 id="weeksPlannedTitle">0</h3>
+          <p id="weeksPlannedMeta" class="muted">Structured course units created.</p>
+        </article>
+      </section>
+
+      <section class="panel timeline-panel">
+        <div class="panel-header">
+          <h2>StudyFlow timeline</h2>
+          <p>Weekly cards ordered by time and urgency.</p>
+        </div>
+
+        <div id="weeksContainer" class="weeks-container">
+          <div class="empty-state">
+            <h3>No weeks added yet</h3>
+            <p>Use the form on the left to build the semester structure.</p>
           </div>
         </div>
       </section>
     </main>
+  </div>
 
-    <section class="card features">
-      <h2>Why this matters</h2>
-      <div class="feature-grid">
-        <div class="feature">
-          <h3>Reduce overload</h3>
-          <p>Transform fragmented information into one clear overview.</p>
+  <template id="weekCardTemplate">
+    <article class="week-card">
+      <div class="week-card-top">
+        <div>
+          <p class="week-label"></p>
+          <h3 class="week-title"></h3>
         </div>
-        <div class="feature">
-          <h3>Clarify next steps</h3>
-          <p>Help students understand what to do next and when.</p>
+        <span class="priority-badge"></span>
+      </div>
+
+      <div class="week-meta-grid">
+        <div>
+          <p class="meta-label">Date</p>
+          <p class="week-date"></p>
         </div>
-        <div class="feature">
-          <h3>Support planning</h3>
-          <p>Connect dates, readings, lectures, and deadlines in one flow.</p>
+        <div>
+          <p class="meta-label">Deadline</p>
+          <p class="week-deadline"></p>
+        </div>
+        <div>
+          <p class="meta-label">Hours</p>
+          <p class="week-hours"></p>
+        </div>
+        <div>
+          <p class="meta-label">Lecture</p>
+          <p class="week-lecture"></p>
         </div>
       </div>
-    </section>
-  </div>
+
+      <div class="week-content">
+        <div>
+          <p class="meta-label">Reading</p>
+          <p class="week-reading"></p>
+        </div>
+        <div>
+          <p class="meta-label">Task</p>
+          <p class="week-task"></p>
+        </div>
+      </div>
+
+      <div class="week-actions">
+        <button type="button" class="btn btn-secondary btn-small edit-week-btn">Edit</button>
+        <button type="button" class="btn btn-danger btn-small delete-week-btn">Delete</button>
+      </div>
+    </article>
+  </template>
 
   <script src="script.js"></script>
 </body>
