@@ -9,6 +9,7 @@ const state = {
     courseNote: "",
   },
   weeks: [],
+  files: [],
   editingWeekId: null,
 };
 
@@ -46,6 +47,11 @@ const weekCardTemplate = document.getElementById("weekCardTemplate");
 const clearWeekFormBtn = document.getElementById("clearWeekFormBtn");
 const resetAllBtn = document.getElementById("resetAllBtn");
 
+const uploadBtn = document.getElementById("uploadBtn");
+const clearFilesBtn = document.getElementById("clearFilesBtn");
+const fileUploadInput = document.getElementById("fileUpload");
+const fileList = document.getElementById("fileList");
+
 init();
 
 function init() {
@@ -60,6 +66,20 @@ function bindEvents() {
   weekForm.addEventListener("submit", handleWeekSubmit);
   clearWeekFormBtn.addEventListener("click", clearWeekForm);
   resetAllBtn.addEventListener("click", resetAllData);
+
+  if (uploadBtn) {
+    uploadBtn.addEventListener("click", () => {
+      fileUploadInput.click();
+    });
+  }
+
+  if (clearFilesBtn) {
+    clearFilesBtn.addEventListener("click", clearAllFiles);
+  }
+
+  if (fileUploadInput) {
+    fileUploadInput.addEventListener("change", handleFileUpload);
+  }
 }
 
 function handleCourseSubmit(event) {
@@ -111,13 +131,45 @@ function handleWeekSubmit(event) {
   render();
 }
 
+function handleFileUpload(event) {
+  const selectedFiles = Array.from(event.target.files || []);
+
+  if (!selectedFiles.length) return;
+
+  const mappedFiles = selectedFiles.map((file) => ({
+    id: crypto.randomUUID(),
+    name: file.name,
+    size: file.size,
+    type: file.type || "Unknown type",
+    lastModified: file.lastModified || null,
+    addedAt: new Date().toISOString(),
+  }));
+
+  state.files.push(...mappedFiles);
+  saveState();
+  renderFiles();
+
+  fileUploadInput.value = "";
+}
+
 function clearWeekForm() {
   weekForm.reset();
   state.editingWeekId = null;
 }
 
+function clearAllFiles() {
+  if (!state.files.length) return;
+
+  const confirmed = window.confirm("Delete all uploaded file entries?");
+  if (!confirmed) return;
+
+  state.files = [];
+  saveState();
+  renderFiles();
+}
+
 function resetAllData() {
-  const confirmed = window.confirm("Delete all course data and weeks?");
+  const confirmed = window.confirm("Delete all course data, weeks and file entries?");
   if (!confirmed) return;
 
   state.course = {
@@ -128,11 +180,17 @@ function resetAllData() {
     courseNote: "",
   };
   state.weeks = [];
+  state.files = [];
   state.editingWeekId = null;
 
   localStorage.removeItem(STORAGE_KEY);
   courseForm.reset();
   weekForm.reset();
+
+  if (fileUploadInput) {
+    fileUploadInput.value = "";
+  }
+
   render();
 }
 
@@ -148,6 +206,7 @@ function render() {
   renderCourseHeader();
   renderSummary();
   renderWeeks();
+  renderFiles();
 }
 
 function renderCourseHeader() {
@@ -220,11 +279,10 @@ function renderWeeks() {
 
   state.weeks.forEach((week) => {
     const fragment = weekCardTemplate.content.cloneNode(true);
-    const card = fragment.querySelector(".week-card");
 
     fragment.querySelector(".week-label").textContent = `Week ${week.number}`;
     fragment.querySelector(".week-title").textContent =
-      week.task || `Structured course unit`;
+      week.task || "Structured course unit";
 
     const badge = fragment.querySelector(".priority-badge");
     badge.textContent = week.priority;
@@ -250,6 +308,47 @@ function renderWeeks() {
   });
 }
 
+function renderFiles() {
+  if (!fileList) return;
+
+  if (!state.files.length) {
+    fileList.innerHTML = `
+      <div class="empty-file-state">
+        <p class="muted">No files uploaded yet.</p>
+      </div>
+    `;
+    return;
+  }
+
+  fileList.innerHTML = state.files
+    .map(
+      (file) => `
+        <div class="file-item">
+          <div class="file-item-main">
+            <p class="file-name">${escapeHtml(file.name)}</p>
+            <p class="file-meta">
+              ${formatFileSize(file.size)} • ${escapeHtml(file.type || "Unknown type")}
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn btn-danger btn-small remove-file-btn"
+            data-file-id="${file.id}"
+          >
+            Remove
+          </button>
+        </div>
+      `
+    )
+    .join("");
+
+  fileList.querySelectorAll(".remove-file-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      deleteFile(button.dataset.fileId);
+    });
+  });
+}
+
 function populateWeekFormForEdit(week) {
   state.editingWeekId = week.id;
 
@@ -272,6 +371,15 @@ function deleteWeek(id) {
   state.weeks = state.weeks.filter((week) => week.id !== id);
   saveState();
   render();
+}
+
+function deleteFile(id) {
+  const confirmed = window.confirm("Delete this file entry?");
+  if (!confirmed) return;
+
+  state.files = state.files.filter((file) => file.id !== id);
+  saveState();
+  renderFiles();
 }
 
 function getUrgentWeek() {
@@ -335,6 +443,31 @@ function trimTrailingZero(number) {
   return Number.isInteger(number) ? String(number) : String(number);
 }
 
+function formatFileSize(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
+
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  const roundedValue = value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1);
+  return `${roundedValue} ${units[unitIndex]}`;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
@@ -345,11 +478,23 @@ function loadState() {
 
   try {
     const parsed = JSON.parse(raw);
-    if (parsed.course) state.course = parsed.course;
-    if (Array.isArray(parsed.weeks)) state.weeks = parsed.weeks;
+
+    if (parsed.course) {
+      state.course = parsed.course;
+    }
+
+    if (Array.isArray(parsed.weeks)) {
+      state.weeks = parsed.weeks;
+    }
+
+    if (Array.isArray(parsed.files)) {
+      state.files = parsed.files;
+    }
+
     if (typeof parsed.editingWeekId !== "undefined") {
       state.editingWeekId = parsed.editingWeekId;
     }
+
     sortWeeks();
   } catch (error) {
     console.error("Failed to load StudyFlow state:", error);
