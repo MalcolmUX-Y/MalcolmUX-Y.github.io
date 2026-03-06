@@ -68,7 +68,9 @@
             <button type="button" id="uploadBtn" class="btn btn-primary">Upload files</button>
             <button type="button" id="clearFilesBtn" class="btn btn-secondary">Clear files</button>
           </div>
-          <p class="muted upload-help">Selected files are stored only in this browser session via local storage metadata.</p>
+          <p class="muted upload-help">
+            Text files can be previewed directly in the browser. Other file types are listed as metadata.
+          </p>
 
           <div id="fileList" class="file-list">
             <div class="empty-file-state">
@@ -172,6 +174,26 @@
           <h3 id="weeksPlannedTitle">0</h3>
           <p id="weeksPlannedMeta" class="muted">Structured course units created.</p>
         </article>
+      </section>
+
+      <section class="panel preview-panel">
+        <div class="panel-header">
+          <h2>File preview</h2>
+          <p>Text-based files can be previewed here.</p>
+        </div>
+
+        <div id="filePreviewEmpty" class="empty-state">
+          <h3>No file selected</h3>
+          <p>Upload and open a text file to preview its content.</p>
+        </div>
+
+        <div id="filePreviewBox" class="file-preview-box hidden">
+          <div class="file-preview-meta">
+            <h3 id="filePreviewTitle">Preview</h3>
+            <p id="filePreviewInfo" class="muted"></p>
+          </div>
+          <pre id="filePreviewContent" class="file-preview-content"></pre>
+        </div>
       </section>
 
       <section class="panel timeline-panel">
