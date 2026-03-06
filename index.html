@@ -258,7 +258,17 @@
       </div>
     </article>
   </template>
+  
+<script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
+const supabase = createClient(
+  "https://flecimbpfuzlfyvgrjk.supabase.co",
+  "sb_publishable_PGpzNsu-bzqL-nBAM25ufw_3g9tBSy5"
+);
+
+window.supabase = supabase;
+</script>
   <script src="script.js"></script>
 </body>
 </html>
