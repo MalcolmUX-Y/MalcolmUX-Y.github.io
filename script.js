@@ -1,7 +1,7 @@
-const supabase = window.db;
+const db = window.db;
 
-if (!supabase) {
-  console.error("Supabase client not found on window.db");
+if (!db) {
+  console.error("db client not found on window.db");
 }
 
 const state = {
@@ -234,9 +234,9 @@ function renderFileList() {
 
     item.addEventListener("click", async () => {
       filePreviewTitle.textContent = file.name;
-      filePreviewInfo.textContent = file.file_url || "Stored in Supabase";
+      filePreviewInfo.textContent = file.file_url || "Stored in db";
       filePreviewContent.textContent =
-        "Preview not implemented for Supabase storage files yet.";
+        "Preview not implemented for db storage files yet.";
       filePreviewEmpty.classList.add("hidden");
       filePreviewBox.classList.remove("hidden");
     });
@@ -246,7 +246,7 @@ function renderFileList() {
 }
 
 async function loadCourse() {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("Courses")
     .select("*")
     .order("created_at", { ascending: false })
@@ -271,7 +271,7 @@ async function loadWeeks() {
     return;
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("study_plan")
     .select("*")
     .eq("course_id", state.course.id)
@@ -294,7 +294,7 @@ async function loadFiles() {
     return;
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("course_documents")
     .select("*")
     .eq("course_id", state.course.id)
@@ -327,7 +327,7 @@ async function saveCourse() {
   }
 
   if (state.course?.id) {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("Courses")
       .update(payload)
       .eq("id", state.course.id)
@@ -342,7 +342,7 @@ async function saveCourse() {
 
     state.course = data;
   } else {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("Courses")
       .insert(payload)
       .select()
@@ -388,7 +388,7 @@ async function saveWeek() {
   }
 
   if (state.editingWeekId) {
-    const { error } = await supabase
+    const { error } = await db
       .from("study_plan")
       .update(payload)
       .eq("id", state.editingWeekId);
@@ -399,7 +399,7 @@ async function saveWeek() {
       return;
     }
   } else {
-    const { error } = await supabase
+    const { error } = await db
       .from("study_plan")
       .insert(payload);
 
@@ -415,7 +415,7 @@ async function saveWeek() {
 }
 
 async function deleteWeek(id) {
-  const { error } = await supabase
+  const { error } = await db
     .from("study_plan")
     .delete()
     .eq("id", id);
@@ -439,9 +439,9 @@ async function resetAllData() {
   }
 
   if (state.course?.id) {
-    await supabase.from("course_documents").delete().eq("course_id", state.course.id);
-    await supabase.from("study_plan").delete().eq("course_id", state.course.id);
-    await supabase.from("Courses").delete().eq("id", state.course.id);
+    await db.from("course_documents").delete().eq("course_id", state.course.id);
+    await db.from("study_plan").delete().eq("course_id", state.course.id);
+    await db.from("Courses").delete().eq("id", state.course.id);
   }
 
   state.course = null;
@@ -469,7 +469,7 @@ async function uploadFiles(files) {
   for (const file of files) {
     const filePath = `${state.course.id}/${Date.now()}-${file.name}`;
 
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await db.storage
       .from("course-files")
       .upload(filePath, file, { upsert: false });
 
@@ -479,11 +479,11 @@ async function uploadFiles(files) {
       continue;
     }
 
-    const { data: publicData } = supabase.storage
+    const { data: publicData } = db.storage
       .from("course-files")
       .getPublicUrl(filePath);
 
-    const { error: insertError } = await supabase
+    const { error: insertError } = await db
       .from("course_documents")
       .insert({
         course_id: state.course.id,
