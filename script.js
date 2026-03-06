@@ -52,6 +52,12 @@ const clearFilesBtn = document.getElementById("clearFilesBtn");
 const fileUploadInput = document.getElementById("fileUpload");
 const fileList = document.getElementById("fileList");
 
+const filePreviewEmpty = document.getElementById("filePreviewEmpty");
+const filePreviewBox = document.getElementById("filePreviewBox");
+const filePreviewTitle = document.getElementById("filePreviewTitle");
+const filePreviewInfo = document.getElementById("filePreviewInfo");
+const filePreviewContent = document.getElementById("filePreviewContent");
+
 init();
 
 function init() {
@@ -133,23 +139,75 @@ function handleWeekSubmit(event) {
 
 function handleFileUpload(event) {
   const selectedFiles = Array.from(event.target.files || []);
-
   if (!selectedFiles.length) return;
 
-  const mappedFiles = selectedFiles.map((file) => ({
-    id: crypto.randomUUID(),
-    name: file.name,
-    size: file.size,
-    type: file.type || "Unknown type",
-    lastModified: file.lastModified || null,
-    addedAt: new Date().toISOString(),
-  }));
+  const fileReadPromises = selectedFiles.map(readSelectedFile);
 
-  state.files.push(...mappedFiles);
-  saveState();
-  renderFiles();
+  Promise.all(fileReadPromises)
+    .then((mappedFiles) => {
+      state.files.push(...mappedFiles);
+      saveState();
+      renderFiles();
+      fileUploadInput.value = "";
+    })
+    .catch((error) => {
+      console.error("Failed to read uploaded files:", error);
+      alert("One or more files could not be read.");
+    });
+}
 
-  fileUploadInput.value = "";
+function readSelectedFile(file) {
+  return new Promise((resolve) => {
+    const extension = getFileExtension(file.name);
+    const previewable = isPreviewableTextFile(file, extension);
+
+    if (!previewable) {
+      resolve({
+        id: crypto.randomUUID(),
+        name: file.name,
+        size: file.size,
+        type: file.type || "Unknown type",
+        lastModified: file.lastModified || null,
+        addedAt: new Date().toISOString(),
+        previewable: false,
+        content: "",
+        extension,
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      resolve({
+        id: crypto.randomUUID(),
+        name: file.name,
+        size: file.size,
+        type: file.type || "Text file",
+        lastModified: file.lastModified || null,
+        addedAt: new Date().toISOString(),
+        previewable: true,
+        content: typeof reader.result === "string" ? reader.result : "",
+        extension,
+      });
+    };
+
+    reader.onerror = () => {
+      resolve({
+        id: crypto.randomUUID(),
+        name: file.name,
+        size: file.size,
+        type: file.type || "Unknown type",
+        lastModified: file.lastModified || null,
+        addedAt: new Date().toISOString(),
+        previewable: false,
+        content: "",
+        extension,
+      });
+    };
+
+    reader.readAsText(file);
+  });
 }
 
 function clearWeekForm() {
@@ -166,6 +224,7 @@ function clearAllFiles() {
   state.files = [];
   saveState();
   renderFiles();
+  clearPreview();
 }
 
 function resetAllData() {
@@ -191,6 +250,7 @@ function resetAllData() {
     fileUploadInput.value = "";
   }
 
+  clearPreview();
   render();
 }
 
@@ -330,13 +390,22 @@ function renderFiles() {
               ${formatFileSize(file.size)} • ${escapeHtml(file.type || "Unknown type")}
             </p>
           </div>
-          <button
-            type="button"
-            class="btn btn-danger btn-small remove-file-btn"
-            data-file-id="${file.id}"
-          >
-            Remove
-          </button>
+          <div class="file-actions">
+            <button
+              type="button"
+              class="btn btn-secondary btn-small open-file-btn"
+              data-file-id="${file.id}"
+            >
+              Open
+            </button>
+            <button
+              type="button"
+              class="btn btn-danger btn-small remove-file-btn"
+              data-file-id="${file.id}"
+            >
+              Remove
+            </button>
+          </div>
         </div>
       `
     )
@@ -347,6 +416,38 @@ function renderFiles() {
       deleteFile(button.dataset.fileId);
     });
   });
+
+  fileList.querySelectorAll(".open-file-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      openFilePreview(button.dataset.fileId);
+    });
+  });
+}
+
+function openFilePreview(id) {
+  const file = state.files.find((item) => item.id === id);
+  if (!file) return;
+
+  filePreviewTitle.textContent = file.name;
+  filePreviewInfo.textContent = `${formatFileSize(file.size)} • ${file.type || "Unknown type"}`;
+
+  if (file.previewable && file.content) {
+    filePreviewContent.textContent = file.content;
+  } else {
+    filePreviewContent.textContent =
+      "This file type cannot be previewed as text in the browser yet. The file is listed as metadata only.";
+  }
+
+  filePreviewEmpty.classList.add("hidden");
+  filePreviewBox.classList.remove("hidden");
+}
+
+function clearPreview() {
+  filePreviewTitle.textContent = "Preview";
+  filePreviewInfo.textContent = "";
+  filePreviewContent.textContent = "";
+  filePreviewBox.classList.add("hidden");
+  filePreviewEmpty.classList.remove("hidden");
 }
 
 function populateWeekFormForEdit(week) {
@@ -380,6 +481,7 @@ function deleteFile(id) {
   state.files = state.files.filter((file) => file.id !== id);
   saveState();
   renderFiles();
+  clearPreview();
 }
 
 function getUrgentWeek() {
@@ -457,6 +559,17 @@ function formatFileSize(bytes) {
 
   const roundedValue = value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1);
   return `${roundedValue} ${units[unitIndex]}`;
+}
+
+function getFileExtension(filename) {
+  const parts = String(filename).split(".");
+  return parts.length > 1 ? parts.pop().toLowerCase() : "";
+}
+
+function isPreviewableTextFile(file, extension) {
+  const previewableExtensions = ["txt", "md", "json", "csv", "js", "html", "css", "xml"];
+  const typeStartsWithText = file.type && file.type.startsWith("text/");
+  return typeStartsWithText || previewableExtensions.includes(extension);
 }
 
 function escapeHtml(value) {
