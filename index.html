@@ -261,14 +261,12 @@
   
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-  const supabase = window.supabase.createClient(
+  window.db = supabase.createClient(
     "https://flecimbpfuzlfyvgrjk.supabase.co",
     "sb_publishable_PGpzNsu-bzqL-nBAM25ufw_3g9tBSy5"
   );
-
-  window.db = supabase;
 </script>
-
-  <script src="script.js"></script>
+<script src="script.js"></script>
+  
 </body>
 </html>
