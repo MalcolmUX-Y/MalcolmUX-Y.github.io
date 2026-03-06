@@ -58,6 +58,28 @@
 
       <section class="panel">
         <div class="panel-header">
+          <h2>Upload files</h2>
+          <p>Attach PDFs, notes, slides or assignments.</p>
+        </div>
+
+        <div class="upload-block">
+          <input type="file" id="fileUpload" multiple hidden />
+          <div class="button-row">
+            <button type="button" id="uploadBtn" class="btn btn-primary">Upload files</button>
+            <button type="button" id="clearFilesBtn" class="btn btn-secondary">Clear files</button>
+          </div>
+          <p class="muted upload-help">Selected files are stored only in this browser session via local storage metadata.</p>
+
+          <div id="fileList" class="file-list">
+            <div class="empty-file-state">
+              <p class="muted">No files uploaded yet.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
           <h2>Add week</h2>
           <p>Build the semester as structured weekly units.</p>
         </div>
