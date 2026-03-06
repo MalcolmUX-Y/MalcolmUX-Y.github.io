@@ -1,7 +1,7 @@
-const supabase = window.supabase;
+const supabase = window.db;
 
 if (!supabase) {
-  console.error("Supabase client not found on window.supabase");
+  console.error("Supabase client not found on window.db");
 }
 
 const state = {
