@@ -1,61 +1,73 @@
-# StudyFlow AI  
-**AI-assisted semester planning for students dealing with fragmented course information**
+# StudyFlow AI
+
+A structured semester dashboard for reducing fragmented study information.
 
 ## Overview
-StudyFlow AI is a prototype that transforms messy course information into a clear, structured, and actionable semester plan.
 
-Students often receive important information across multiple sources: course pages, PDFs, announcements, calendars, reading lists, and assignment descriptions. This creates unnecessary cognitive load and makes it difficult to build a clear overview of what needs to be done, when, and in what order.
+StudyFlow AI is a front-end UX prototype built to explore how students can organize semester information in a more actionable and cognitively manageable way.
 
-StudyFlow AI addresses this problem by allowing the user to paste raw semester or course-plan text into the interface. The system then uses the OpenAI API to structure the information into a streamlined weekly study plan with readings, deadlines, tasks, and estimated workload.
+Instead of relying on scattered course pages, PDFs, and unstructured notes, the interface allows the user to build a semester through clear weekly units.
 
----
+## Core idea
 
-## Problem
-University learning platforms often contain all the necessary information, but not in a format that supports efficient planning and decision-making.
+The project addresses a recurring study problem:
 
-Typical issues include:
+- information is distributed across multiple systems
+- deadlines and readings are often disconnected
+- students must manually re-structure course content
+- planning becomes mentally demanding
 
-- course information is fragmented across multiple pages
-- deadlines are separated from literature and teaching activities
-- students must manually interpret and reorganize information
-- important tasks compete equally for attention
-- planning becomes mentally demanding rather than supportive
+StudyFlow AI responds to this by offering:
 
-This creates friction in the student's workflow and contributes to information overload.
+- structured course setup
+- week-by-week planning
+- a timeline of study cards
+- next task overview
+- nearest deadline overview
+- total workload overview
 
----
+## Tech stack
 
-## Solution
-StudyFlow AI restructures unorganized course information into a readable and usable study flow.
+- HTML
+- CSS
+- JavaScript
+- localStorage for browser-based persistence
+- GitHub Pages for deployment
 
-The user pastes course-related text such as:
+## Why this project matters
 
-- semester plans
-- reading lists
-- assignment descriptions
-- weekly schedules
-- deadline overviews
+This is not primarily an AI demo.
 
-The system then generates:
+It is a UX and information architecture case about:
 
-- a structured weekly plan
-- a clearer connection between dates, readings, and tasks
-- prioritised next actions
-- estimated workload per week
-- a simplified overview that reduces decision fatigue
+- reducing cognitive overload
+- improving task clarity
+- structuring fragmented academic information
+- supporting semester planning through interface design
 
----
+## Current features
 
-## Core Features
+- create and save course context
+- add weekly study units
+- edit and delete week cards
+- generate dashboard summaries
+- persist data locally in the browser
 
-### 1. Paste and structure
-The user pastes unformatted course information into a text field.
+## Future directions
 
-Example input:
+Potential next steps:
 
-```text
-Course: Information Architecture
-Week 3:
-Reading: Chapter 4 + Article "Digital Overload"
-Assignment: Reflection paper due March 14
-Lecture: Tuesday 10:00-12:00
+- AI-assisted parsing of semester plans
+- PDF upload
+- deadline filters
+- workload balancing
+- export to calendar
+- multi-course overview
+
+## Live site
+
+Published through GitHub Pages.
+
+## Author
+
+Yves
