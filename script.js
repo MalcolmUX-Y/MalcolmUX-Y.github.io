@@ -68,12 +68,24 @@ function renderUploadStep() {
           Upload a PDF that should frame the AI analysis and the later study structure.
         </p>
 
-        <div class="upload-box">
-          <input id="pdfInput" type="file" accept="application/pdf" />
-          <p id="fileStatus" class="muted">
-            ${state.documentFile ? `Valgt fil: ${state.documentFile.name}` : "Ingen fil valgt endnu"}
-          </p>
+<div class="upload-box">
+
+  <input id="pdfInput" type="file" accept="application/pdf" />
+
+  ${
+    state.documentFile
+      ? `
+        <div class="file-preview">
+          <div>
+            <strong>${state.documentFile.name}</strong>
+            <p class="muted">PDF selected and ready for analysis</p>
+          </div>
         </div>
+      `
+      : `<p class="muted">Ingen fil valgt endnu</p>`
+  }
+
+</div>
 
         <div class="actions">
           <button class="btn btn-primary" id="uploadContinueBtn" disabled>
