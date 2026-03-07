@@ -191,6 +191,16 @@ textarea {
   transform: translateY(-1px);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .btn {
+    transition: none;
+  }
+
+  .btn:hover {
+    transform: none;
+  }
+}
+
 .btn-primary {
   background: var(--blue);
   color: white;
@@ -244,6 +254,23 @@ textarea {
   background: rgba(255, 255, 255, 0.02);
 }
 
+.week-row {
+  display: block;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.week-row-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.week-row-meta {
+  margin-top: 4px;
+}
+
 .file-preview-main strong {
   display: block;
   margin-bottom: 6px;
@@ -270,14 +297,6 @@ textarea {
   to {
     transform: rotate(360deg);
   }
-}
-
-.week-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
 }
 
 .week-row:last-child {
