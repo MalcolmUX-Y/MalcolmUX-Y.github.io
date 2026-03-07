@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>StudyFlow AI</title>
   <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.js"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -66,6 +67,7 @@
           <input type="file" id="fileUpload" multiple hidden />
           <div class="button-row">
             <button type="button" id="uploadBtn" class="btn btn-primary">Upload files</button>
+            <button type="button" id="analyzePdfBtn" class="btn btn-primary">Analyze document</button>
             <button type="button" id="clearFilesBtn" class="btn btn-secondary">Clear files</button>
           </div>
           <p class="muted upload-help">
