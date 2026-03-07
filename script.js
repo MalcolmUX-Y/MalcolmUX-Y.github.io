@@ -69,6 +69,27 @@ function numberOrNull(value) {
   return Number.isNaN(num) ? null : num;
 }
 
+async function analyzeCourseText(text) {
+  const functionUrl = "DIN_SUPABASE_URL/functions/v1/analyze-course";
+
+  const response = await fetch(functionUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({ text }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || "AI request failed");
+  }
+
+  return data.result;
+}
+
 function resetWeekForm() {
   weekForm.reset();
   state.editingWeekId = null;
