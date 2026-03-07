@@ -130,12 +130,13 @@ async function extractPdfText(file) {
 
 async function analyzeCourseText(text) {
   const headers = {
-    "Content-Type": "application/json",
-  };
+  "Content-Type": "application/json",
+};
 
-  if (SUPABASE_ANON_KEY.trim()) {
-    headers.apikey = SUPABASE_ANON_KEY.trim();
-  }
+if (SUPABASE_ANON_KEY.trim()) {
+  headers.apikey = SUPABASE_ANON_KEY.trim();
+  headers.Authorization = `Bearer ${SUPABASE_ANON_KEY.trim()}`;
+}
 
   const response = await fetch(SUPABASE_FUNCTION_URL, {
     method: "POST",
