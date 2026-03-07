@@ -1,7 +1,14 @@
 const db = window.db;
 
+const SUPABASE_ANON_KEY =
+  window.SUPABASE_ANON_KEY ||
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsZWNpbWJwZnV6bGZseXZnanJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Mjg4MTksImV4cCI6MjA4ODQwNDgxOX0.Wcifm_Wjjm1olJefkzOhP2_ZBuDVkqMIB2gGIGpYpZQ";
+
+const ANALYZE_COURSE_URL =
+  "https://flecimbpfuzlflyvgjrk.supabase.co/functions/v1/analyze-course";
+
 if (!db) {
-  console.error("db client not found on window.db");
+  console.error("Supabase client not found on window.db");
 }
 
 const state = {
@@ -56,6 +63,13 @@ const weeksPlannedMeta = document.getElementById("weeksPlannedMeta");
 const weeksContainer = document.getElementById("weeksContainer");
 const weekCardTemplate = document.getElementById("weekCardTemplate");
 
+function assertDb() {
+  if (!db) {
+    alert("Database connection not found.");
+    throw new Error("Supabase client not found on window.db");
+  }
+}
+
 function formatDate(value) {
   if (!value) return "Not set";
   const date = new Date(value);
@@ -69,32 +83,67 @@ function numberOrNull(value) {
   return Number.isNaN(num) ? null : num;
 }
 
-async function analyzeCourseText(text) {
-  const functionUrl = "https://flecimbpfuzlflyvgjrk.supabase.co/functions/v1/analyze-course";
+function safeText(value, fallback = "Not set") {
+  return value && String(value).trim() ? value : fallback;
+}
 
-  const response = await fetch(functionUrl, {
+function setWeekSubmitLabel(label) {
+  const submitBtn = weekForm?.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.textContent = label;
+}
+
+function showFilePreview(title, info, content) {
+  filePreviewTitle.textContent = title;
+  filePreviewInfo.textContent = info;
+  filePreviewContent.textContent = content;
+  filePreviewEmpty.classList.add("hidden");
+  filePreviewBox.classList.remove("hidden");
+}
+
+function hideFilePreview() {
+  filePreviewBox.classList.add("hidden");
+  filePreviewEmpty.classList.remove("hidden");
+}
+
+function handleError(context, error, userMessage) {
+  console.error(context, error);
+  if (userMessage) alert(userMessage);
+}
+
+async function analyzeCourseText(text) {
+  if (!text || !String(text).trim()) {
+    throw new Error("No text provided for AI analysis.");
+  }
+
+  const response = await fetch(ANALYZE_COURSE_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsZWNpbWJwZnV6bGZseXZnanJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Mjg4MTksImV4cCI6MjA4ODQwNDgxOX0.Wcifm_Wjjm1olJefkzOhP2_ZBuDVkqMIB2gGIGpYpZQ",
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
     },
     body: JSON.stringify({ text }),
   });
 
-  const data = await response.json();
+  let data = null;
 
-  if (!response.ok) {
-    throw new Error(data.error || "AI request failed");
+  try {
+    data = await response.json();
+  } catch (error) {
+    throw new Error("Could not parse AI response.");
   }
 
-  return data.result;
+  if (!response.ok) {
+    throw new Error(data?.error || "AI request failed");
+  }
+
+  return data?.result ?? data;
 }
 
 function resetWeekForm() {
   weekForm.reset();
   state.editingWeekId = null;
-  const submitBtn = weekForm.querySelector('button[type="submit"]');
-  if (submitBtn) submitBtn.textContent = "Add week";
+  setWeekSubmitLabel("Add week");
 }
 
 function populateWeekForm(week) {
@@ -106,10 +155,9 @@ function populateWeekForm(week) {
   weekDeadlineInput.value = week.deadline ?? "";
   weekHoursInput.value = week.hours ?? "";
   weekPriorityInput.value = week.priority ?? "Normal";
-  state.editingWeekId = week.id;
 
-  const submitBtn = weekForm.querySelector('button[type="submit"]');
-  if (submitBtn) submitBtn.textContent = "Update week";
+  state.editingWeekId = week.id;
+  setWeekSubmitLabel("Update week");
 }
 
 function setCourseForm(course) {
@@ -123,18 +171,22 @@ function setCourseForm(course) {
 function renderCourseHeader() {
   if (!state.course) {
     dashboardCourseTitle.textContent = "No course selected";
-    dashboardCourseMeta.textContent = "Save a course setup to populate the dashboard.";
+    dashboardCourseMeta.textContent =
+      "Save a course setup to populate the dashboard.";
     return;
   }
 
-  dashboardCourseTitle.textContent = state.course.title || "Untitled course";
+  dashboardCourseTitle.textContent =
+    safeText(state.course.title, "Untitled course");
 
   const parts = [];
+
   if (state.course.semester_start || state.course.semester_end) {
     parts.push(
       `${state.course.semester_start || "?"} → ${state.course.semester_end || "?"}`
     );
   }
+
   if (state.course.lecture_schedule) {
     parts.push(state.course.lecture_schedule);
   }
@@ -166,22 +218,30 @@ function renderSummary() {
   });
 
   const nextWeek = sortedByWeek[0];
-  nextTaskTitle.textContent = nextWeek.task || `Week ${nextWeek.week_number}`;
-  nextTaskMeta.textContent = nextWeek.reading || nextWeek.lecture || "No details";
+  nextTaskTitle.textContent =
+    safeText(nextWeek.task) !== "Not set"
+      ? nextWeek.task
+      : `Week ${nextWeek.week_number ?? "-"}`;
+  nextTaskMeta.textContent =
+    nextWeek.reading || nextWeek.lecture || "No details";
 
   const weeksWithDeadline = state.weeks
-    .filter((w) => w.deadline)
+    .filter((week) => week.deadline)
     .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
 
   if (weeksWithDeadline.length) {
-    nearestDeadlineTitle.textContent = `Week ${weeksWithDeadline[0].week_number}`;
+    nearestDeadlineTitle.textContent = `Week ${weeksWithDeadline[0].week_number ?? "-"}`;
     nearestDeadlineMeta.textContent = formatDate(weeksWithDeadline[0].deadline);
   } else {
     nearestDeadlineTitle.textContent = "No deadlines yet";
     nearestDeadlineMeta.textContent = "Deadlines will appear here.";
   }
 
-  const totalHours = state.weeks.reduce((sum, week) => sum + (Number(week.hours) || 0), 0);
+  const totalHours = state.weeks.reduce(
+    (sum, week) => sum + (Number(week.hours) || 0),
+    0
+  );
+
   totalWorkloadTitle.textContent = `${totalHours} hours`;
   totalWorkloadMeta.textContent = "Across all added weeks.";
 
@@ -202,30 +262,37 @@ function renderWeeks() {
     return;
   }
 
-  const sorted = [...state.weeks].sort((a, b) => {
+  const sortedWeeks = [...state.weeks].sort((a, b) => {
     const aNum = a.week_number ?? 9999;
     const bNum = b.week_number ?? 9999;
     return aNum - bNum;
   });
 
-  for (const week of sorted) {
+  for (const week of sortedWeeks) {
     const fragment = weekCardTemplate.content.cloneNode(true);
 
     fragment.querySelector(".week-label").textContent = `Week ${week.week_number ?? "-"}`;
-    fragment.querySelector(".week-title").textContent = week.task || week.lecture || "Planned week";
-    fragment.querySelector(".priority-badge").textContent = week.priority || "Normal";
+    fragment.querySelector(".week-title").textContent =
+      week.task || week.lecture || "Planned week";
+    fragment.querySelector(".priority-badge").textContent =
+      week.priority || "Normal";
 
     fragment.querySelector(".week-date").textContent = formatDate(week.week_date);
     fragment.querySelector(".week-deadline").textContent = formatDate(week.deadline);
-    fragment.querySelector(".week-hours").textContent = week.hours ? `${week.hours}h` : "Not set";
-    fragment.querySelector(".week-lecture").textContent = week.lecture || "Not set";
-    fragment.querySelector(".week-reading").textContent = week.reading || "Not set";
-    fragment.querySelector(".week-task").textContent = week.task || "Not set";
+    fragment.querySelector(".week-hours").textContent =
+      week.hours ? `${week.hours}h` : "Not set";
+    fragment.querySelector(".week-lecture").textContent =
+      week.lecture || "Not set";
+    fragment.querySelector(".week-reading").textContent =
+      week.reading || "Not set";
+    fragment.querySelector(".week-task").textContent =
+      week.task || "Not set";
 
     const editBtn = fragment.querySelector(".edit-week-btn");
     const deleteBtn = fragment.querySelector(".delete-week-btn");
 
     editBtn.addEventListener("click", () => populateWeekForm(week));
+
     deleteBtn.addEventListener("click", async () => {
       if (!confirm("Delete this week?")) return;
       await deleteWeek(week.id);
@@ -253,13 +320,12 @@ function renderFileList() {
     item.className = "file-list-item btn btn-secondary";
     item.textContent = `${file.name} (${file.file_type || "unknown"})`;
 
-    item.addEventListener("click", async () => {
-      filePreviewTitle.textContent = file.name;
-      filePreviewInfo.textContent = file.file_url || "Stored in db";
-      filePreviewContent.textContent =
-        "Preview not implemented for db storage files yet.";
-      filePreviewEmpty.classList.add("hidden");
-      filePreviewBox.classList.remove("hidden");
+    item.addEventListener("click", () => {
+      showFilePreview(
+        file.name,
+        file.file_url || "Stored in db",
+        "Preview not implemented for db storage files yet."
+      );
     });
 
     fileList.appendChild(item);
@@ -267,6 +333,8 @@ function renderFileList() {
 }
 
 async function loadCourse() {
+  assertDb();
+
   const { data, error } = await db
     .from("Courses")
     .select("*")
@@ -275,7 +343,7 @@ async function loadCourse() {
     .maybeSingle();
 
   if (error) {
-    console.error("loadCourse error", error);
+    handleError("loadCourse error", error);
     return;
   }
 
@@ -285,6 +353,8 @@ async function loadCourse() {
 }
 
 async function loadWeeks() {
+  assertDb();
+
   if (!state.course?.id) {
     state.weeks = [];
     renderWeeks();
@@ -299,7 +369,7 @@ async function loadWeeks() {
     .order("week_number", { ascending: true });
 
   if (error) {
-    console.error("loadWeeks error", error);
+    handleError("loadWeeks error", error);
     return;
   }
 
@@ -309,6 +379,8 @@ async function loadWeeks() {
 }
 
 async function loadFiles() {
+  assertDb();
+
   if (!state.course?.id) {
     state.files = [];
     renderFileList();
@@ -322,7 +394,7 @@ async function loadFiles() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("loadFiles error", error);
+    handleError("loadFiles error", error);
     return;
   }
 
@@ -331,11 +403,14 @@ async function loadFiles() {
 }
 
 async function saveCourse() {
+  assertDb();
+
   const payload = {
     title: courseTitleInput.value.trim(),
-    semester: semesterStartInput.value && semesterEndInput.value
-      ? `${semesterStartInput.value} → ${semesterEndInput.value}`
-      : "",
+    semester:
+      semesterStartInput.value && semesterEndInput.value
+        ? `${semesterStartInput.value} → ${semesterEndInput.value}`
+        : "",
     semester_start: semesterStartInput.value || null,
     semester_end: semesterEndInput.value || null,
     lecture_schedule: lectureScheduleInput.value.trim() || null,
@@ -356,8 +431,7 @@ async function saveCourse() {
       .single();
 
     if (error) {
-      console.error("update course error", error);
-      alert("Could not update course.");
+      handleError("update course error", error, "Could not update course.");
       return;
     }
 
@@ -370,8 +444,7 @@ async function saveCourse() {
       .single();
 
     if (error) {
-      console.error("insert course error", error);
-      alert("Could not save course.");
+      handleError("insert course error", error, "Could not save course.");
       return;
     }
 
@@ -384,6 +457,8 @@ async function saveCourse() {
 }
 
 async function saveWeek() {
+  assertDb();
+
   if (!state.course?.id) {
     alert("Save course first.");
     return;
@@ -415,18 +490,14 @@ async function saveWeek() {
       .eq("id", state.editingWeekId);
 
     if (error) {
-      console.error("update week error", error);
-      alert("Could not update week.");
+      handleError("update week error", error, "Could not update week.");
       return;
     }
   } else {
-    const { error } = await db
-      .from("study_plan")
-      .insert(payload);
+    const { error } = await db.from("study_plan").insert(payload);
 
     if (error) {
-      console.error("insert week error", error);
-      alert("Could not save week.");
+      handleError("insert week error", error, "Could not save week.");
       return;
     }
   }
@@ -436,14 +507,12 @@ async function saveWeek() {
 }
 
 async function deleteWeek(id) {
-  const { error } = await db
-    .from("study_plan")
-    .delete()
-    .eq("id", id);
+  assertDb();
+
+  const { error } = await db.from("study_plan").delete().eq("id", id);
 
   if (error) {
-    console.error("deleteWeek error", error);
-    alert("Could not delete week.");
+    handleError("deleteWeek error", error, "Could not delete week.");
     return;
   }
 
@@ -455,33 +524,41 @@ async function deleteWeek(id) {
 }
 
 async function resetAllData() {
-  if (!confirm("This will delete the current course, weeks and file metadata. Continue?")) {
+  assertDb();
+
+  if (
+    !confirm("This will delete the current course, weeks and file metadata. Continue?")
+  ) {
     return;
   }
 
-  if (state.course?.id) {
-    await db.from("course_documents").delete().eq("course_id", state.course.id);
-    await db.from("study_plan").delete().eq("course_id", state.course.id);
-    await db.from("Courses").delete().eq("id", state.course.id);
+  try {
+    if (state.course?.id) {
+      await db.from("course_documents").delete().eq("course_id", state.course.id);
+      await db.from("study_plan").delete().eq("course_id", state.course.id);
+      await db.from("Courses").delete().eq("id", state.course.id);
+    }
+
+    state.course = null;
+    state.weeks = [];
+    state.files = [];
+    state.editingWeekId = null;
+
+    courseForm.reset();
+    resetWeekForm();
+    renderCourseHeader();
+    renderWeeks();
+    renderSummary();
+    renderFileList();
+    hideFilePreview();
+  } catch (error) {
+    handleError("resetAllData error", error, "Could not reset all data.");
   }
-
-  state.course = null;
-  state.weeks = [];
-  state.files = [];
-  state.editingWeekId = null;
-
-  courseForm.reset();
-  resetWeekForm();
-  renderCourseHeader();
-  renderWeeks();
-  renderSummary();
-  renderFileList();
-
-  filePreviewBox.classList.add("hidden");
-  filePreviewEmpty.classList.remove("hidden");
 }
 
 async function uploadFiles(files) {
+  assertDb();
+
   if (!state.course?.id) {
     alert("Save course first.");
     return;
@@ -495,8 +572,7 @@ async function uploadFiles(files) {
       .upload(filePath, file, { upsert: false });
 
     if (uploadError) {
-      console.error("upload error", uploadError);
-      alert(`Could not upload ${file.name}`);
+      handleError("upload error", uploadError, `Could not upload ${file.name}`);
       continue;
     }
 
@@ -504,19 +580,20 @@ async function uploadFiles(files) {
       .from("course-files")
       .getPublicUrl(filePath);
 
-    const { error: insertError } = await db
-      .from("course_documents")
-      .insert({
-        course_id: state.course.id,
-        name: file.name,
-        file_url: publicData.publicUrl,
-        file_type: file.type || "unknown",
-        ai_processed: false,
-      });
+    const { error: insertError } = await db.from("course_documents").insert({
+      course_id: state.course.id,
+      name: file.name,
+      file_url: publicData.publicUrl,
+      file_type: file.type || "unknown",
+      ai_processed: false,
+    });
 
     if (insertError) {
-      console.error("course_documents insert error", insertError);
-      alert(`Could not save metadata for ${file.name}`);
+      handleError(
+        "course_documents insert error",
+        insertError,
+        `Could not save metadata for ${file.name}`
+      );
     }
   }
 
@@ -526,40 +603,40 @@ async function uploadFiles(files) {
 function clearFilesUI() {
   state.files = [];
   renderFileList();
-  filePreviewBox.classList.add("hidden");
-  filePreviewEmpty.classList.remove("hidden");
+  hideFilePreview();
 }
 
-courseForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
+courseForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
   await saveCourse();
 });
 
-weekForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
+weekForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
   await saveWeek();
 });
 
-resetAllBtn.addEventListener("click", async () => {
+resetAllBtn?.addEventListener("click", async () => {
   await resetAllData();
 });
 
-clearWeekFormBtn.addEventListener("click", () => {
+clearWeekFormBtn?.addEventListener("click", () => {
   resetWeekForm();
 });
 
-uploadBtn.addEventListener("click", () => {
-  fileUpload.click();
+uploadBtn?.addEventListener("click", () => {
+  fileUpload?.click();
 });
 
-fileUpload.addEventListener("change", async (event) => {
+fileUpload?.addEventListener("change", async (event) => {
   const files = Array.from(event.target.files || []);
   if (!files.length) return;
+
   await uploadFiles(files);
   fileUpload.value = "";
 });
 
-clearFilesBtn.addEventListener("click", () => {
+clearFilesBtn?.addEventListener("click", () => {
   clearFilesUI();
 });
 
@@ -568,10 +645,15 @@ async function boot() {
   renderWeeks();
   renderSummary();
   renderFileList();
+  hideFilePreview();
 
-  await loadCourse();
-  await loadWeeks();
-  await loadFiles();
+  try {
+    await loadCourse();
+    await loadWeeks();
+    await loadFiles();
+  } catch (error) {
+    handleError("boot error", error, "Could not load app data.");
+  }
 }
 
 boot();
