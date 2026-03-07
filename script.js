@@ -1,14 +1,7 @@
 const db = window.db;
 
-const SUPABASE_ANON_KEY =
-  window.SUPABASE_ANON_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsZWNpbWJwZnV6bGZseXZnanJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Mjg4MTksImV4cCI6MjA4ODQwNDgxOX0.Wcifm_Wjjm1olJefkzOhP2_ZBuDVkqMIB2gGIGpYpZQ";
-
-const ANALYZE_COURSE_URL =
-  "https://flecimbpfuzlflyvgjrk.supabase.co/functions/v1/analyze-course";
-
 if (!db) {
-  console.error("Supabase client not found on window.db");
+  console.error("db client not found on window.db");
 }
 
 const state = {
@@ -42,6 +35,8 @@ const clearWeekFormBtn = document.getElementById("clearWeekFormBtn");
 const fileUpload = document.getElementById("fileUpload");
 const uploadBtn = document.getElementById("uploadBtn");
 const clearFilesBtn = document.getElementById("clearFilesBtn");
+const analyzePdfBtn = document.getElementById("analyzePdfBtn");
+
 const fileList = document.getElementById("fileList");
 const filePreviewEmpty = document.getElementById("filePreviewEmpty");
 const filePreviewBox = document.getElementById("filePreviewBox");
@@ -63,12 +58,9 @@ const weeksPlannedMeta = document.getElementById("weeksPlannedMeta");
 const weeksContainer = document.getElementById("weeksContainer");
 const weekCardTemplate = document.getElementById("weekCardTemplate");
 
-function assertDb() {
-  if (!db) {
-    alert("Database connection not found.");
-    throw new Error("Supabase client not found on window.db");
-  }
-}
+const SUPABASE_ANON_KEY =
+  window.SUPABASE_ANON_KEY ||
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsZWNpbWJwZnV6bGZseXZnanJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Mjg4MTksImV4cCI6MjA4ODQwNDgxOX0.Wcifm_Wjjm1olJefkzOhP2_ZBuDVkqMIB2gGIGpYpZQ";
 
 function formatDate(value) {
   if (!value) return "Not set";
@@ -83,67 +75,33 @@ function numberOrNull(value) {
   return Number.isNaN(num) ? null : num;
 }
 
-function safeText(value, fallback = "Not set") {
-  return value && String(value).trim() ? value : fallback;
-}
-
-function setWeekSubmitLabel(label) {
-  const submitBtn = weekForm?.querySelector('button[type="submit"]');
-  if (submitBtn) submitBtn.textContent = label;
-}
-
-function showFilePreview(title, info, content) {
-  filePreviewTitle.textContent = title;
-  filePreviewInfo.textContent = info;
-  filePreviewContent.textContent = content;
-  filePreviewEmpty.classList.add("hidden");
-  filePreviewBox.classList.remove("hidden");
-}
-
-function hideFilePreview() {
-  filePreviewBox.classList.add("hidden");
-  filePreviewEmpty.classList.remove("hidden");
-}
-
-function handleError(context, error, userMessage) {
-  console.error(context, error);
-  if (userMessage) alert(userMessage);
-}
-
 async function analyzeCourseText(text) {
-  if (!text || !String(text).trim()) {
-    throw new Error("No text provided for AI analysis.");
-  }
+  const functionUrl = "https://flecimbpfuzlflyvgjrk.supabase.co/functions/v1/analyze-course";
 
-  const response = await fetch(ANALYZE_COURSE_URL, {
+  const response = await fetch(functionUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      "apikey": SUPABASE_ANON_KEY,
+      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
     },
     body: JSON.stringify({ text }),
   });
 
-  let data = null;
-
-  try {
-    data = await response.json();
-  } catch (error) {
-    throw new Error("Could not parse AI response.");
-  }
+  const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data?.error || "AI request failed");
+    throw new Error(data.error || "AI request failed");
   }
 
-  return data?.result ?? data;
+  return data.result;
 }
 
 function resetWeekForm() {
   weekForm.reset();
   state.editingWeekId = null;
-  setWeekSubmitLabel("Add week");
+  const submitBtn = weekForm.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.textContent = "Add week";
 }
 
 function populateWeekForm(week) {
@@ -155,9 +113,10 @@ function populateWeekForm(week) {
   weekDeadlineInput.value = week.deadline ?? "";
   weekHoursInput.value = week.hours ?? "";
   weekPriorityInput.value = week.priority ?? "Normal";
-
   state.editingWeekId = week.id;
-  setWeekSubmitLabel("Update week");
+
+  const submitBtn = weekForm.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.textContent = "Update week";
 }
 
 function setCourseForm(course) {
@@ -171,22 +130,18 @@ function setCourseForm(course) {
 function renderCourseHeader() {
   if (!state.course) {
     dashboardCourseTitle.textContent = "No course selected";
-    dashboardCourseMeta.textContent =
-      "Save a course setup to populate the dashboard.";
+    dashboardCourseMeta.textContent = "Save a course setup to populate the dashboard.";
     return;
   }
 
-  dashboardCourseTitle.textContent =
-    safeText(state.course.title, "Untitled course");
+  dashboardCourseTitle.textContent = state.course.title || "Untitled course";
 
   const parts = [];
-
   if (state.course.semester_start || state.course.semester_end) {
     parts.push(
       `${state.course.semester_start || "?"} → ${state.course.semester_end || "?"}`
     );
   }
-
   if (state.course.lecture_schedule) {
     parts.push(state.course.lecture_schedule);
   }
@@ -218,30 +173,22 @@ function renderSummary() {
   });
 
   const nextWeek = sortedByWeek[0];
-  nextTaskTitle.textContent =
-    safeText(nextWeek.task) !== "Not set"
-      ? nextWeek.task
-      : `Week ${nextWeek.week_number ?? "-"}`;
-  nextTaskMeta.textContent =
-    nextWeek.reading || nextWeek.lecture || "No details";
+  nextTaskTitle.textContent = nextWeek.task || `Week ${nextWeek.week_number}`;
+  nextTaskMeta.textContent = nextWeek.reading || nextWeek.lecture || "No details";
 
   const weeksWithDeadline = state.weeks
-    .filter((week) => week.deadline)
+    .filter((w) => w.deadline)
     .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
 
   if (weeksWithDeadline.length) {
-    nearestDeadlineTitle.textContent = `Week ${weeksWithDeadline[0].week_number ?? "-"}`;
+    nearestDeadlineTitle.textContent = `Week ${weeksWithDeadline[0].week_number}`;
     nearestDeadlineMeta.textContent = formatDate(weeksWithDeadline[0].deadline);
   } else {
     nearestDeadlineTitle.textContent = "No deadlines yet";
     nearestDeadlineMeta.textContent = "Deadlines will appear here.";
   }
 
-  const totalHours = state.weeks.reduce(
-    (sum, week) => sum + (Number(week.hours) || 0),
-    0
-  );
-
+  const totalHours = state.weeks.reduce((sum, week) => sum + (Number(week.hours) || 0), 0);
   totalWorkloadTitle.textContent = `${totalHours} hours`;
   totalWorkloadMeta.textContent = "Across all added weeks.";
 
@@ -262,37 +209,30 @@ function renderWeeks() {
     return;
   }
 
-  const sortedWeeks = [...state.weeks].sort((a, b) => {
+  const sorted = [...state.weeks].sort((a, b) => {
     const aNum = a.week_number ?? 9999;
     const bNum = b.week_number ?? 9999;
     return aNum - bNum;
   });
 
-  for (const week of sortedWeeks) {
+  for (const week of sorted) {
     const fragment = weekCardTemplate.content.cloneNode(true);
 
     fragment.querySelector(".week-label").textContent = `Week ${week.week_number ?? "-"}`;
-    fragment.querySelector(".week-title").textContent =
-      week.task || week.lecture || "Planned week";
-    fragment.querySelector(".priority-badge").textContent =
-      week.priority || "Normal";
+    fragment.querySelector(".week-title").textContent = week.task || week.lecture || "Planned week";
+    fragment.querySelector(".priority-badge").textContent = week.priority || "Normal";
 
     fragment.querySelector(".week-date").textContent = formatDate(week.week_date);
     fragment.querySelector(".week-deadline").textContent = formatDate(week.deadline);
-    fragment.querySelector(".week-hours").textContent =
-      week.hours ? `${week.hours}h` : "Not set";
-    fragment.querySelector(".week-lecture").textContent =
-      week.lecture || "Not set";
-    fragment.querySelector(".week-reading").textContent =
-      week.reading || "Not set";
-    fragment.querySelector(".week-task").textContent =
-      week.task || "Not set";
+    fragment.querySelector(".week-hours").textContent = week.hours ? `${week.hours}h` : "Not set";
+    fragment.querySelector(".week-lecture").textContent = week.lecture || "Not set";
+    fragment.querySelector(".week-reading").textContent = week.reading || "Not set";
+    fragment.querySelector(".week-task").textContent = week.task || "Not set";
 
     const editBtn = fragment.querySelector(".edit-week-btn");
     const deleteBtn = fragment.querySelector(".delete-week-btn");
 
     editBtn.addEventListener("click", () => populateWeekForm(week));
-
     deleteBtn.addEventListener("click", async () => {
       if (!confirm("Delete this week?")) return;
       await deleteWeek(week.id);
@@ -320,12 +260,12 @@ function renderFileList() {
     item.className = "file-list-item btn btn-secondary";
     item.textContent = `${file.name} (${file.file_type || "unknown"})`;
 
-    item.addEventListener("click", () => {
-      showFilePreview(
-        file.name,
-        file.file_url || "Stored in db",
-        "Preview not implemented for db storage files yet."
-      );
+    item.addEventListener("click", async () => {
+      filePreviewTitle.textContent = file.name;
+      filePreviewInfo.textContent = file.file_url || "Stored in db";
+      filePreviewContent.textContent = "Document uploaded. Ready for analysis.";
+      filePreviewEmpty.classList.add("hidden");
+      filePreviewBox.classList.remove("hidden");
     });
 
     fileList.appendChild(item);
@@ -333,8 +273,6 @@ function renderFileList() {
 }
 
 async function loadCourse() {
-  assertDb();
-
   const { data, error } = await db
     .from("Courses")
     .select("*")
@@ -343,7 +281,7 @@ async function loadCourse() {
     .maybeSingle();
 
   if (error) {
-    handleError("loadCourse error", error);
+    console.error("loadCourse error", error);
     return;
   }
 
@@ -353,8 +291,6 @@ async function loadCourse() {
 }
 
 async function loadWeeks() {
-  assertDb();
-
   if (!state.course?.id) {
     state.weeks = [];
     renderWeeks();
@@ -369,7 +305,7 @@ async function loadWeeks() {
     .order("week_number", { ascending: true });
 
   if (error) {
-    handleError("loadWeeks error", error);
+    console.error("loadWeeks error", error);
     return;
   }
 
@@ -379,8 +315,6 @@ async function loadWeeks() {
 }
 
 async function loadFiles() {
-  assertDb();
-
   if (!state.course?.id) {
     state.files = [];
     renderFileList();
@@ -394,7 +328,7 @@ async function loadFiles() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    handleError("loadFiles error", error);
+    console.error("loadFiles error", error);
     return;
   }
 
@@ -403,14 +337,11 @@ async function loadFiles() {
 }
 
 async function saveCourse() {
-  assertDb();
-
   const payload = {
     title: courseTitleInput.value.trim(),
-    semester:
-      semesterStartInput.value && semesterEndInput.value
-        ? `${semesterStartInput.value} → ${semesterEndInput.value}`
-        : "",
+    semester: semesterStartInput.value && semesterEndInput.value
+      ? `${semesterStartInput.value} → ${semesterEndInput.value}`
+      : "",
     semester_start: semesterStartInput.value || null,
     semester_end: semesterEndInput.value || null,
     lecture_schedule: lectureScheduleInput.value.trim() || null,
@@ -431,7 +362,8 @@ async function saveCourse() {
       .single();
 
     if (error) {
-      handleError("update course error", error, "Could not update course.");
+      console.error("update course error", error);
+      alert("Could not update course.");
       return;
     }
 
@@ -444,7 +376,8 @@ async function saveCourse() {
       .single();
 
     if (error) {
-      handleError("insert course error", error, "Could not save course.");
+      console.error("insert course error", error);
+      alert("Could not save course.");
       return;
     }
 
@@ -457,8 +390,6 @@ async function saveCourse() {
 }
 
 async function saveWeek() {
-  assertDb();
-
   if (!state.course?.id) {
     alert("Save course first.");
     return;
@@ -490,14 +421,18 @@ async function saveWeek() {
       .eq("id", state.editingWeekId);
 
     if (error) {
-      handleError("update week error", error, "Could not update week.");
+      console.error("update week error", error);
+      alert("Could not update week.");
       return;
     }
   } else {
-    const { error } = await db.from("study_plan").insert(payload);
+    const { error } = await db
+      .from("study_plan")
+      .insert(payload);
 
     if (error) {
-      handleError("insert week error", error, "Could not save week.");
+      console.error("insert week error", error);
+      alert("Could not save week.");
       return;
     }
   }
@@ -507,12 +442,14 @@ async function saveWeek() {
 }
 
 async function deleteWeek(id) {
-  assertDb();
-
-  const { error } = await db.from("study_plan").delete().eq("id", id);
+  const { error } = await db
+    .from("study_plan")
+    .delete()
+    .eq("id", id);
 
   if (error) {
-    handleError("deleteWeek error", error, "Could not delete week.");
+    console.error("deleteWeek error", error);
+    alert("Could not delete week.");
     return;
   }
 
@@ -524,41 +461,33 @@ async function deleteWeek(id) {
 }
 
 async function resetAllData() {
-  assertDb();
-
-  if (
-    !confirm("This will delete the current course, weeks and file metadata. Continue?")
-  ) {
+  if (!confirm("This will delete the current course, weeks and file metadata. Continue?")) {
     return;
   }
 
-  try {
-    if (state.course?.id) {
-      await db.from("course_documents").delete().eq("course_id", state.course.id);
-      await db.from("study_plan").delete().eq("course_id", state.course.id);
-      await db.from("Courses").delete().eq("id", state.course.id);
-    }
-
-    state.course = null;
-    state.weeks = [];
-    state.files = [];
-    state.editingWeekId = null;
-
-    courseForm.reset();
-    resetWeekForm();
-    renderCourseHeader();
-    renderWeeks();
-    renderSummary();
-    renderFileList();
-    hideFilePreview();
-  } catch (error) {
-    handleError("resetAllData error", error, "Could not reset all data.");
+  if (state.course?.id) {
+    await db.from("course_documents").delete().eq("course_id", state.course.id);
+    await db.from("study_plan").delete().eq("course_id", state.course.id);
+    await db.from("Courses").delete().eq("id", state.course.id);
   }
+
+  state.course = null;
+  state.weeks = [];
+  state.files = [];
+  state.editingWeekId = null;
+
+  courseForm.reset();
+  resetWeekForm();
+  renderCourseHeader();
+  renderWeeks();
+  renderSummary();
+  renderFileList();
+
+  filePreviewBox.classList.add("hidden");
+  filePreviewEmpty.classList.remove("hidden");
 }
 
 async function uploadFiles(files) {
-  assertDb();
-
   if (!state.course?.id) {
     alert("Save course first.");
     return;
@@ -572,7 +501,8 @@ async function uploadFiles(files) {
       .upload(filePath, file, { upsert: false });
 
     if (uploadError) {
-      handleError("upload error", uploadError, `Could not upload ${file.name}`);
+      console.error("upload error", uploadError);
+      alert(`Could not upload ${file.name}`);
       continue;
     }
 
@@ -580,64 +510,236 @@ async function uploadFiles(files) {
       .from("course-files")
       .getPublicUrl(filePath);
 
-    const { error: insertError } = await db.from("course_documents").insert({
-      course_id: state.course.id,
-      name: file.name,
-      file_url: publicData.publicUrl,
-      file_type: file.type || "unknown",
-      ai_processed: false,
-    });
+    const { error: insertError } = await db
+      .from("course_documents")
+      .insert({
+        course_id: state.course.id,
+        name: file.name,
+        file_url: publicData.publicUrl,
+        file_type: file.type || "unknown",
+        ai_processed: false,
+      });
 
     if (insertError) {
-      handleError(
-        "course_documents insert error",
-        insertError,
-        `Could not save metadata for ${file.name}`
-      );
+      console.error("course_documents insert error", insertError);
+      alert(`Could not save metadata for ${file.name}`);
     }
   }
 
   await loadFiles();
 }
 
+async function extractTextFromPdfUrl(pdfUrl) {
+  if (!window.pdfjsLib) {
+    throw new Error("pdf.js is not loaded.");
+  }
+
+  const pdfjsLib = window.pdfjsLib;
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.js";
+
+  const loadingTask = pdfjsLib.getDocument(pdfUrl);
+  const pdf = await loadingTask.promise;
+
+  let fullText = "";
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
+    const page = await pdf.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items.map((item) => item.str).join(" ");
+    fullText += `\n\n${pageText}`;
+  }
+
+  return fullText.trim();
+}
+
+function mapAiItemToStudyPlanRow(item, index, courseId) {
+  const rawDate = typeof item.date === "string" ? item.date : "";
+  const weekMatch = rawDate.match(/week\s*(\d+)/i);
+  const weekNumber = weekMatch ? Number(weekMatch[1]) : index + 1;
+
+  const readings = Array.isArray(item.readings) ? item.readings.join(" | ") : null;
+
+  if (item.type === "event") {
+    return {
+      course_id: courseId,
+      week_number: weekNumber,
+      week_date: null,
+      reading: null,
+      lecture: item.title || item.topic || "Event",
+      task: item.title || item.assignment || "Event",
+      deadline: null,
+      hours: null,
+      priority: "High",
+      status: "pending",
+      scheduled_date: null,
+    };
+  }
+
+  return {
+    course_id: courseId,
+    week_number: weekNumber,
+    week_date: null,
+    reading: readings,
+    lecture: item.topic || null,
+    task: item.assignment || null,
+    deadline: null,
+    hours: null,
+    priority: "Normal",
+    status: "pending",
+    scheduled_date: null,
+  };
+}
+
+async function analyzeLatestPdfAndPopulateStudyPlan() {
+  if (!state.course?.id) {
+    alert("Save course first.");
+    return;
+  }
+
+  const pdfFiles = state.files.filter(
+    (file) =>
+      file.file_type === "application/pdf" ||
+      String(file.name || "").toLowerCase().endsWith(".pdf")
+  );
+
+  if (!pdfFiles.length) {
+    alert("No PDF uploaded yet.");
+    return;
+  }
+
+  const latestPdf = pdfFiles[0];
+
+  const confirmed = confirm(
+    `Analyze this document and generate study plan items?\n\n${latestPdf.name}`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    analyzePdfBtn.disabled = true;
+    analyzePdfBtn.textContent = "Analyzing...";
+
+    filePreviewTitle.textContent = latestPdf.name;
+    filePreviewInfo.textContent = latestPdf.file_url || "PDF selected";
+    filePreviewContent.textContent = "Extracting text from PDF...";
+    filePreviewEmpty.classList.add("hidden");
+    filePreviewBox.classList.remove("hidden");
+
+    const extractedText = await extractTextFromPdfUrl(latestPdf.file_url);
+
+    if (!extractedText || extractedText.length < 20) {
+      throw new Error("Very little text was extracted from the PDF.");
+    }
+
+    filePreviewContent.textContent = "Sending extracted text to AI...";
+
+    const aiResult = await analyzeCourseText(extractedText);
+
+    if (!aiResult?.items?.length) {
+      alert("AI found no usable study items in this PDF.");
+      return;
+    }
+
+    const secondConfirm = confirm(
+      `AI found ${aiResult.items.length} items. Insert them into your study plan?`
+    );
+
+    if (!secondConfirm) {
+      filePreviewContent.textContent = "Analysis completed, but insertion was cancelled.";
+      return;
+    }
+
+    const rows = aiResult.items.map((item, index) =>
+      mapAiItemToStudyPlanRow(item, index, state.course.id)
+    );
+
+    const { error: deleteError } = await db
+      .from("study_plan")
+      .delete()
+      .eq("course_id", state.course.id);
+
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    const { error: insertError } = await db
+      .from("study_plan")
+      .insert(rows);
+
+    if (insertError) {
+      throw insertError;
+    }
+
+    const { error: updateError } = await db
+      .from("course_documents")
+      .update({ ai_processed: true })
+      .eq("id", latestPdf.id);
+
+    if (updateError) {
+      console.error("course_documents update error", updateError);
+    }
+
+    filePreviewContent.textContent =
+      `Analysis complete. ${rows.length} study plan items were created.`;
+
+    await loadWeeks();
+    await loadFiles();
+  } catch (error) {
+    console.error("analyzeLatestPdfAndPopulateStudyPlan error", error);
+    alert(error.message || "Could not analyze PDF.");
+    filePreviewContent.textContent =
+      `Analysis failed: ${error.message || "Unknown error"}`;
+  } finally {
+    analyzePdfBtn.disabled = false;
+    analyzePdfBtn.textContent = "Analyze document";
+  }
+}
+
 function clearFilesUI() {
   state.files = [];
   renderFileList();
-  hideFilePreview();
+  filePreviewBox.classList.add("hidden");
+  filePreviewEmpty.classList.remove("hidden");
 }
 
-courseForm?.addEventListener("submit", async (event) => {
-  event.preventDefault();
+courseForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
   await saveCourse();
 });
 
-weekForm?.addEventListener("submit", async (event) => {
-  event.preventDefault();
+weekForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
   await saveWeek();
 });
 
-resetAllBtn?.addEventListener("click", async () => {
+resetAllBtn.addEventListener("click", async () => {
   await resetAllData();
 });
 
-clearWeekFormBtn?.addEventListener("click", () => {
+clearWeekFormBtn.addEventListener("click", () => {
   resetWeekForm();
 });
 
-uploadBtn?.addEventListener("click", () => {
-  fileUpload?.click();
+uploadBtn.addEventListener("click", () => {
+  fileUpload.click();
 });
 
-fileUpload?.addEventListener("change", async (event) => {
+fileUpload.addEventListener("change", async (event) => {
   const files = Array.from(event.target.files || []);
   if (!files.length) return;
-
   await uploadFiles(files);
   fileUpload.value = "";
 });
 
-clearFilesBtn?.addEventListener("click", () => {
+clearFilesBtn.addEventListener("click", () => {
   clearFilesUI();
+});
+
+analyzePdfBtn?.addEventListener("click", async () => {
+  await analyzeLatestPdfAndPopulateStudyPlan();
 });
 
 async function boot() {
@@ -645,15 +747,10 @@ async function boot() {
   renderWeeks();
   renderSummary();
   renderFileList();
-  hideFilePreview();
 
-  try {
-    await loadCourse();
-    await loadWeeks();
-    await loadFiles();
-  } catch (error) {
-    handleError("boot error", error, "Could not load app data.");
-  }
+  await loadCourse();
+  await loadWeeks();
+  await loadFiles();
 }
 
 boot();
