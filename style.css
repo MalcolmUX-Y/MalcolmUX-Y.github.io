@@ -39,10 +39,6 @@ pre {
   margin-top: 0;
 }
 
-/* ===============================
-   NEW APP LAYOUT (workflow UI)
-================================ */
-
 .app-shell {
   max-width: 1100px;
   margin: 0 auto;
@@ -71,10 +67,6 @@ h1 {
   margin-bottom: 6px;
 }
 
-/* ===============================
-   STEP INDICATOR
-================================ */
-
 .step-indicator {
   display: flex;
   gap: 8px;
@@ -98,16 +90,12 @@ h1 {
 
 .step-pill.active {
   border-color: var(--blue);
-  box-shadow: 0 0 0 2px rgba(77,141,255,0.15);
+  box-shadow: 0 0 0 2px rgba(77, 141, 255, 0.15);
 }
 
 .step-pill.done {
   opacity: 0.6;
 }
-
-/* ===============================
-   WORKFLOW SCREENS
-================================ */
 
 .screen {
   min-height: 60vh;
@@ -139,10 +127,6 @@ h1 {
   line-height: 1.5;
   margin-bottom: 20px;
 }
-
-/* ===============================
-   FORM ELEMENTS
-================================ */
 
 .review-grid {
   display: grid;
@@ -186,10 +170,6 @@ textarea {
   resize: vertical;
   min-height: 90px;
 }
-
-/* ===============================
-   BUTTONS
-================================ */
 
 .actions {
   display: flex;
@@ -244,10 +224,6 @@ textarea {
   cursor: not-allowed;
 }
 
-/* ===============================
-   CONTENT BLOCKS
-================================ */
-
 .upload-box,
 .status-box,
 .summary-box,
@@ -258,6 +234,42 @@ textarea {
   padding: 16px;
   background: var(--panel-2);
   margin-bottom: 18px;
+}
+
+.file-preview {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.file-preview-main strong {
+  display: block;
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+
+.analysis-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top: 2px solid var(--blue);
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .week-row {
@@ -276,16 +288,9 @@ textarea {
   color: var(--muted);
 }
 
-/* ===============================
-   LEGACY DASHBOARD STYLES
-   (kept from your original CSS)
-================================ */
-
 .hidden {
   display: none;
 }
-
-/* Responsive */
 
 @media (max-width: 900px) {
   .step-indicator {
@@ -305,11 +310,4 @@ textarea {
   h1 {
     font-size: 34px;
   }
-}
-.file-preview {
-  margin-top: 14px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 14px;
-  background: rgba(255,255,255,0.02);
 }
