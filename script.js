@@ -70,13 +70,13 @@ function numberOrNull(value) {
 }
 
 async function analyzeCourseText(text) {
-  const functionUrl = "https://flecimbpfuzlflyvgjrk.supabase.co/functions/v1/analyze-course/functions/v1/analyze-course";
+  const functionUrl = "https://flecimbpfuzlflyvgjrk.supabase.co/functions/v1/analyze-course";
 
   const response = await fetch(functionUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsZWNpbWJwZnV6bGZseXZnanJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Mjg4MTksImV4cCI6MjA4ODQwNDgxOX0.Wcifm_Wjjm1olJefkzOhP2_ZBuDVkqMIB2gGIGpYpZQ}`,
+      "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsZWNpbWJwZnV6bGZseXZnanJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Mjg4MTksImV4cCI6MjA4ODQwNDgxOX0.Wcifm_Wjjm1olJefkzOhP2_ZBuDVkqMIB2gGIGpYpZQ",
     },
     body: JSON.stringify({ text }),
   });
