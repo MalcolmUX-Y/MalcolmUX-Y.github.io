@@ -4,6 +4,7 @@ const SUPABASE_FUNCTION_URL =
 // Hvis din Edge Function kræver apikey, indsæt din publishable/anon key her.
 // Hvis den virker uden, kan du lade den stå tom.
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsZWNpbWJwZnV6bGZseXZnanJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Mjg4MTksImV4cCI6MjA4ODQwNDgxOX0.Wcifm_Wjjm1olJefkzOhP2_ZBuDVkqMIB2gGIGpYpZQ";
+const SUPABASE_ANON_KEY_TRIMMED = SUPABASE_ANON_KEY.trim();
 
 const state = {
   currentStep: 1,
@@ -130,13 +131,13 @@ async function extractPdfText(file) {
 
 async function analyzeCourseText(text) {
   const headers = {
-  "Content-Type": "application/json",
-};
+    "Content-Type": "application/json",
+  };
 
-if (SUPABASE_ANON_KEY.trim()) {
-  headers.apikey = SUPABASE_ANON_KEY.trim();
-  headers.Authorization = `Bearer ${SUPABASE_ANON_KEY.trim()}`;
-}
+  if (SUPABASE_ANON_KEY_TRIMMED) {
+    headers.apikey = SUPABASE_ANON_KEY_TRIMMED;
+    headers.Authorization = `Bearer ${SUPABASE_ANON_KEY_TRIMMED}`;
+  }
 
   const response = await fetch(SUPABASE_FUNCTION_URL, {
     method: "POST",
@@ -192,22 +193,27 @@ function toDisplayDate(isoDate) {
   return `${day}-${month}-${year}`;
 }
 
-function getEarliestDate(items) {
-  const dates = items
-    .map((item) => normalizeDateString(item.date))
-    .filter(Boolean)
-    .sort();
+function getDateRange(items) {
+  return items.reduce(
+    (range, item) => {
+      const normalizedDate = normalizeDateString(item.date);
 
-  return dates[0] || "";
-}
+      if (!normalizedDate) {
+        return range;
+      }
 
-function getLatestDate(items) {
-  const dates = items
-    .map((item) => normalizeDateString(item.date))
-    .filter(Boolean)
-    .sort();
+      if (!range.start || normalizedDate < range.start) {
+        range.start = normalizedDate;
+      }
 
-  return dates[dates.length - 1] || "";
+      if (!range.end || normalizedDate > range.end) {
+        range.end = normalizedDate;
+      }
+
+      return range;
+    },
+    { start: "", end: "" }
+  );
 }
 
 function buildLectureSchedule(courseInfo) {
@@ -265,15 +271,52 @@ function mapItemsToUiModel(items) {
     };
   });
 
+  const dateRange = getDateRange(orderedEntries);
+
   return {
     title: courseInfo?.title || (state.documentFile ? state.documentFile.name.replace(/\.pdf$/i, "") : ""),
-    semesterStart: getEarliestDate(orderedEntries),
-    semesterEnd: getLatestDate(orderedEntries),
+    semesterStart: dateRange.start,
+    semesterEnd: dateRange.end,
     lectureSchedule: buildLectureSchedule(courseInfo),
     teachers: Array.isArray(courseInfo?.teachers) ? courseInfo.teachers : [],
     courseNotes: courseInfo?.notes || "",
     weeks,
   };
+}
+
+function renderWeeksList(items, emptyText) {
+  if (!items?.length) {
+    return `<p class="muted">${escapeHtml(emptyText)}</p>`;
+  }
+
+  return items
+    .map(
+      (item) => `
+        <div class="week-row">
+          <div class="week-row-header">
+            <strong>${escapeHtml(item.kind === "event" ? "Event" : "Session")} ${item.week}</strong>
+            <span class="muted">${escapeHtml(item.date ? toDisplayDate(item.date) : item.rawDate || "")}</span>
+          </div>
+          <div><strong>${escapeHtml(item.topic || "-")}</strong></div>
+          ${
+            item.readings?.length
+              ? `<div class="muted week-row-meta">Readings: ${escapeHtml(item.readings.join(" | "))}</div>`
+              : ""
+          }
+          ${
+            item.assignment
+              ? `<div class="muted week-row-meta">Assignment: ${escapeHtml(item.assignment)}</div>`
+              : ""
+          }
+          ${
+            item.notes
+              ? `<div class="muted week-row-meta">Notes: ${escapeHtml(item.notes)}</div>`
+              : ""
+          }
+        </div>
+      `
+    )
+    .join("");
 }
 
 function getAnalysisStatusMarkup() {
@@ -496,38 +539,7 @@ function renderReviewStep() {
 
         <div class="weeks-preview">
           <h3>Extracted sessions and events</h3>
-          ${
-            data?.weeks?.length
-              ? data.weeks
-                  .map(
-                    (item) => `
-                      <div class="week-row" style="display:block; padding:12px 0; border-bottom:1px solid rgba(255,255,255,0.08);">
-                        <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:6px;">
-                          <strong>${escapeHtml(item.kind === "event" ? "Event" : "Session")} ${item.week}</strong>
-                          <span class="muted">${escapeHtml(item.date ? toDisplayDate(item.date) : item.rawDate || "")}</span>
-                        </div>
-                        <div><strong>${escapeHtml(item.topic || "-")}</strong></div>
-                        ${
-                          item.readings?.length
-                            ? `<div class="muted" style="margin-top:4px;">Readings: ${escapeHtml(item.readings.join(" | "))}</div>`
-                            : ""
-                        }
-                        ${
-                          item.assignment
-                            ? `<div class="muted" style="margin-top:4px;">Assignment: ${escapeHtml(item.assignment)}</div>`
-                            : ""
-                        }
-                        ${
-                          item.notes
-                            ? `<div class="muted" style="margin-top:4px;">Notes: ${escapeHtml(item.notes)}</div>`
-                            : ""
-                        }
-                      </div>
-                    `
-                  )
-                  .join("")
-              : `<p class="muted">Ingen sessions eller events fundet endnu</p>`
-          }
+          ${renderWeeksList(data?.weeks, "Ingen sessions eller events fundet endnu")}
         </div>
 
         <div class="actions">
@@ -616,38 +628,7 @@ function renderDashboardStep() {
 
         <div class="weeks-preview">
           <h3>Sessions and events</h3>
-          ${
-            plan?.weeks?.length
-              ? plan.weeks
-                  .map(
-                    (item) => `
-                      <div class="week-row" style="display:block; padding:12px 0; border-bottom:1px solid rgba(255,255,255,0.08);">
-                        <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:6px;">
-                          <strong>${escapeHtml(item.kind === "event" ? "Event" : "Session")} ${item.week}</strong>
-                          <span class="muted">${escapeHtml(item.date ? toDisplayDate(item.date) : item.rawDate || "")}</span>
-                        </div>
-                        <div><strong>${escapeHtml(item.topic || "-")}</strong></div>
-                        ${
-                          item.readings?.length
-                            ? `<div class="muted" style="margin-top:4px;">Readings: ${escapeHtml(item.readings.join(" | "))}</div>`
-                            : ""
-                        }
-                        ${
-                          item.assignment
-                            ? `<div class="muted" style="margin-top:4px;">Assignment: ${escapeHtml(item.assignment)}</div>`
-                            : ""
-                        }
-                        ${
-                          item.notes
-                            ? `<div class="muted" style="margin-top:4px;">Notes: ${escapeHtml(item.notes)}</div>`
-                            : ""
-                        }
-                      </div>
-                    `
-                  )
-                  .join("")
-              : `<p class="muted">Ingen items endnu</p>`
-          }
+          ${renderWeeksList(plan?.weeks, "Ingen items endnu")}
         </div>
 
         <div class="actions">
