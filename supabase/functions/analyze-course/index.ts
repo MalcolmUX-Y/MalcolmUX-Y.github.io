@@ -33,6 +33,64 @@ type EventItem = {
 type CourseItem = CourseInfoItem | SessionItem | EventItem;
 type SegmentType = "course_info" | "session" | "event" | "ignore";
 
+type PipelineTelemetry = {
+  ignoredSegments: number;
+  extractorPathCounts: {
+    courseInfoHeuristic: number;
+    eventHeuristic: number;
+    sessionHeuristic: number;
+    courseInfoClassifier: number;
+    eventClassifier: number;
+    sessionClassifier: number;
+    fallbackLocal: number;
+    classifierIgnored: number;
+  };
+  segmentItemYield: {
+    totalSegments: number;
+    nonEmptySegments: number;
+    emptySegments: number;
+    totalItems: number;
+  };
+};
+
+function createPipelineTelemetry(): PipelineTelemetry {
+  return {
+    ignoredSegments: 0,
+    extractorPathCounts: {
+      courseInfoHeuristic: 0,
+      eventHeuristic: 0,
+      sessionHeuristic: 0,
+      courseInfoClassifier: 0,
+      eventClassifier: 0,
+      sessionClassifier: 0,
+      fallbackLocal: 0,
+      classifierIgnored: 0,
+    },
+    segmentItemYield: {
+      totalSegments: 0,
+      nonEmptySegments: 0,
+      emptySegments: 0,
+      totalItems: 0,
+    },
+  };
+}
+
+function recordSegmentYield(
+  telemetry: PipelineTelemetry,
+  items: CourseItem[],
+): CourseItem[] {
+  telemetry.segmentItemYield.totalSegments += 1;
+  telemetry.segmentItemYield.totalItems += items.length;
+
+  if (items.length > 0) {
+    telemetry.segmentItemYield.nonEmptySegments += 1;
+  } else {
+    telemetry.segmentItemYield.emptySegments += 1;
+  }
+
+  return items;
+}
+
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -637,44 +695,60 @@ ${segment}`;
 async function analyzeSegmentWithPipeline(
   segment: string,
   apiKey: string,
+  telemetry: PipelineTelemetry,
 ): Promise<CourseItem[]> {
   if (shouldIgnoreSegment(segment)) {
-    return [];
+    telemetry.ignoredSegments += 1;
+    return recordSegmentYield(telemetry, []);
   }
 
   if (looksLikeCourseInfo(segment)) {
-    return await extractCourseInfo(segment, apiKey);
+    telemetry.extractorPathCounts.courseInfoHeuristic += 1;
+    const items = await extractCourseInfo(segment, apiKey);
+    return recordSegmentYield(telemetry, items);
   }
 
   if (looksLikeEvent(segment)) {
-    return await extractEvent(segment, apiKey);
+    telemetry.extractorPathCounts.eventHeuristic += 1;
+    const items = await extractEvent(segment, apiKey);
+    return recordSegmentYield(telemetry, items);
   }
 
   if (looksLikeSession(segment)) {
-    return await extractSession(segment, apiKey);
+    telemetry.extractorPathCounts.sessionHeuristic += 1;
+    const items = await extractSession(segment, apiKey);
+    return recordSegmentYield(telemetry, items);
   }
 
   const type = await classifySegment(segment, apiKey);
 
   if (type === "course_info") {
-    return await extractCourseInfo(segment, apiKey);
+    telemetry.extractorPathCounts.courseInfoClassifier += 1;
+    const items = await extractCourseInfo(segment, apiKey);
+    return recordSegmentYield(telemetry, items);
   }
 
   if (type === "event") {
-    return await extractEvent(segment, apiKey);
+    telemetry.extractorPathCounts.eventClassifier += 1;
+    const items = await extractEvent(segment, apiKey);
+    return recordSegmentYield(telemetry, items);
   }
 
   if (type === "session") {
-    return await extractSession(segment, apiKey);
+    telemetry.extractorPathCounts.sessionClassifier += 1;
+    const items = await extractSession(segment, apiKey);
+    return recordSegmentYield(telemetry, items);
   }
 
   /* LOCAL FALLBACK */
+  telemetry.extractorPathCounts.classifierIgnored += 1;
+  telemetry.extractorPathCounts.fallbackLocal += 1;
   const localItems = localParseSegment(segment);
   if (localItems.length > 0) {
-    return localItems;
+    return recordSegmentYield(telemetry, localItems);
   }
 
-  return [];
+  return recordSegmentYield(telemetry, []);
 }
 
 Deno.serve(async (req: Request) => {
@@ -714,14 +788,40 @@ Deno.serve(async (req: Request) => {
     }
 
     const segments = segmentText(text);
+    const telemetry = createPipelineTelemetry();
     const allItems: CourseItem[] = [];
 
     for (const segment of segments) {
-      const items = await analyzeSegmentWithPipeline(segment, OPENAI_API_KEY);
+      const items = await analyzeSegmentWithPipeline(
+        segment,
+        OPENAI_API_KEY,
+        telemetry,
+      );
       allItems.push(...items);
     }
 
     const cleanedItems = cleanAndMergeItems(allItems);
+
+    const fallbackRate = telemetry.segmentItemYield.totalSegments > 0
+      ? telemetry.extractorPathCounts.fallbackLocal /
+        telemetry.segmentItemYield.totalSegments
+      : 0;
+
+    const nonEmptyItemYield = telemetry.segmentItemYield.totalSegments > 0
+      ? telemetry.segmentItemYield.nonEmptySegments /
+        telemetry.segmentItemYield.totalSegments
+      : 0;
+
+    console.log(
+      JSON.stringify({
+        type: "analyze-course.telemetry",
+        segmentCount: segments.length,
+        fallbackRate,
+        nonEmptyItemYield,
+        extractorPathCounts: telemetry.extractorPathCounts,
+        segmentItemYield: telemetry.segmentItemYield,
+      }),
+    );
 
     return new Response(
       JSON.stringify({
