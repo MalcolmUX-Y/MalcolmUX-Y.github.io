@@ -1,756 +1,352 @@
-const db = window.db;
-
-if (!db) {
-  console.error("db client not found on window.db");
-}
-
 const state = {
-  course: null,
-  weeks: [],
-  files: [],
-  editingWeekId: null,
+  currentStep: 1,
+  documentFile: null,
+  extractedData: null,
+  confirmedPlan: null,
 };
 
-const courseForm = document.getElementById("courseForm");
-const weekForm = document.getElementById("weekForm");
+const TOTAL_STEPS = 5;
 
-const courseTitleInput = document.getElementById("courseTitle");
-const semesterStartInput = document.getElementById("semesterStart");
-const semesterEndInput = document.getElementById("semesterEnd");
-const lectureScheduleInput = document.getElementById("lectureSchedule");
-const courseNoteInput = document.getElementById("courseNote");
+const app = document.getElementById("app");
+const stepIndicator = document.getElementById("stepIndicator");
 
-const weekNumberInput = document.getElementById("weekNumber");
-const weekDateInput = document.getElementById("weekDate");
-const weekReadingInput = document.getElementById("weekReading");
-const weekLectureInput = document.getElementById("weekLecture");
-const weekTaskInput = document.getElementById("weekTask");
-const weekDeadlineInput = document.getElementById("weekDeadline");
-const weekHoursInput = document.getElementById("weekHours");
-const weekPriorityInput = document.getElementById("weekPriority");
-
-const resetAllBtn = document.getElementById("resetAllBtn");
-const clearWeekFormBtn = document.getElementById("clearWeekFormBtn");
-
-const fileUpload = document.getElementById("fileUpload");
-const uploadBtn = document.getElementById("uploadBtn");
-const clearFilesBtn = document.getElementById("clearFilesBtn");
-const analyzePdfBtn = document.getElementById("analyzePdfBtn");
-
-const fileList = document.getElementById("fileList");
-const filePreviewEmpty = document.getElementById("filePreviewEmpty");
-const filePreviewBox = document.getElementById("filePreviewBox");
-const filePreviewTitle = document.getElementById("filePreviewTitle");
-const filePreviewInfo = document.getElementById("filePreviewInfo");
-const filePreviewContent = document.getElementById("filePreviewContent");
-
-const dashboardCourseTitle = document.getElementById("dashboardCourseTitle");
-const dashboardCourseMeta = document.getElementById("dashboardCourseMeta");
-const nextTaskTitle = document.getElementById("nextTaskTitle");
-const nextTaskMeta = document.getElementById("nextTaskMeta");
-const nearestDeadlineTitle = document.getElementById("nearestDeadlineTitle");
-const nearestDeadlineMeta = document.getElementById("nearestDeadlineMeta");
-const totalWorkloadTitle = document.getElementById("totalWorkloadTitle");
-const totalWorkloadMeta = document.getElementById("totalWorkloadMeta");
-const weeksPlannedTitle = document.getElementById("weeksPlannedTitle");
-const weeksPlannedMeta = document.getElementById("weeksPlannedMeta");
-
-const weeksContainer = document.getElementById("weeksContainer");
-const weekCardTemplate = document.getElementById("weekCardTemplate");
-
-const SUPABASE_ANON_KEY =
-  window.SUPABASE_ANON_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsZWNpbWJwZnV6bGZseXZnanJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Mjg4MTksImV4cCI6MjA4ODQwNDgxOX0.Wcifm_Wjjm1olJefkzOhP2_ZBuDVkqMIB2gGIGpYpZQ";
-
-function formatDate(value) {
-  if (!value) return "Not set";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString();
+function setStep(step) {
+  state.currentStep = step;
+  renderApp();
 }
 
-function numberOrNull(value) {
-  if (value === "" || value === null || value === undefined) return null;
-  const num = Number(value);
-  return Number.isNaN(num) ? null : num;
-}
-
-async function analyzeCourseText(text) {
-  const functionUrl = "https://flecimbpfuzlflyvgjrk.supabase.co/functions/v1/analyze-course";
-
-  const response = await fetch(functionUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "apikey": SUPABASE_ANON_KEY,
-      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-    },
-    body: JSON.stringify({ text }),
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || "AI request failed");
+function nextStep() {
+  if (state.currentStep < TOTAL_STEPS) {
+    state.currentStep += 1;
+    renderApp();
   }
-
-  return data.result;
 }
 
-function resetWeekForm() {
-  weekForm.reset();
-  state.editingWeekId = null;
-  const submitBtn = weekForm.querySelector('button[type="submit"]');
-  if (submitBtn) submitBtn.textContent = "Add week";
-}
-
-function populateWeekForm(week) {
-  weekNumberInput.value = week.week_number ?? "";
-  weekDateInput.value = week.week_date ?? "";
-  weekReadingInput.value = week.reading ?? "";
-  weekLectureInput.value = week.lecture ?? "";
-  weekTaskInput.value = week.task ?? "";
-  weekDeadlineInput.value = week.deadline ?? "";
-  weekHoursInput.value = week.hours ?? "";
-  weekPriorityInput.value = week.priority ?? "Normal";
-  state.editingWeekId = week.id;
-
-  const submitBtn = weekForm.querySelector('button[type="submit"]');
-  if (submitBtn) submitBtn.textContent = "Update week";
-}
-
-function setCourseForm(course) {
-  courseTitleInput.value = course?.title ?? "";
-  semesterStartInput.value = course?.semester_start ?? "";
-  semesterEndInput.value = course?.semester_end ?? "";
-  lectureScheduleInput.value = course?.lecture_schedule ?? "";
-  courseNoteInput.value = course?.note ?? "";
-}
-
-function renderCourseHeader() {
-  if (!state.course) {
-    dashboardCourseTitle.textContent = "No course selected";
-    dashboardCourseMeta.textContent = "Save a course setup to populate the dashboard.";
-    return;
+function previousStep() {
+  if (state.currentStep > 1) {
+    state.currentStep -= 1;
+    renderApp();
   }
-
-  dashboardCourseTitle.textContent = state.course.title || "Untitled course";
-
-  const parts = [];
-  if (state.course.semester_start || state.course.semester_end) {
-    parts.push(
-      `${state.course.semester_start || "?"} → ${state.course.semester_end || "?"}`
-    );
-  }
-  if (state.course.lecture_schedule) {
-    parts.push(state.course.lecture_schedule);
-  }
-
-  dashboardCourseMeta.textContent =
-    parts.join(" • ") || "Course saved in database.";
 }
 
-function renderSummary() {
-  if (!state.weeks.length) {
-    nextTaskTitle.textContent = "No tasks yet";
-    nextTaskMeta.textContent = "Add a week to generate structure.";
+function renderStepIndicator() {
+  const labels = [
+    "Upload",
+    "Analyze",
+    "Review",
+    "Confirm",
+    "Dashboard",
+  ];
 
-    nearestDeadlineTitle.textContent = "No deadlines yet";
-    nearestDeadlineMeta.textContent = "Deadlines will appear here.";
+  stepIndicator.innerHTML = labels
+    .map((label, index) => {
+      const stepNumber = index + 1;
+      const status =
+        stepNumber === state.currentStep
+          ? "active"
+          : stepNumber < state.currentStep
+          ? "done"
+          : "";
 
-    totalWorkloadTitle.textContent = "0 hours";
-    totalWorkloadMeta.textContent = "Across all added weeks.";
-
-    weeksPlannedTitle.textContent = "0";
-    weeksPlannedMeta.textContent = "Structured course units created.";
-    return;
-  }
-
-  const sortedByWeek = [...state.weeks].sort((a, b) => {
-    const aNum = a.week_number ?? 9999;
-    const bNum = b.week_number ?? 9999;
-    return aNum - bNum;
-  });
-
-  const nextWeek = sortedByWeek[0];
-  nextTaskTitle.textContent = nextWeek.task || `Week ${nextWeek.week_number}`;
-  nextTaskMeta.textContent = nextWeek.reading || nextWeek.lecture || "No details";
-
-  const weeksWithDeadline = state.weeks
-    .filter((w) => w.deadline)
-    .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
-
-  if (weeksWithDeadline.length) {
-    nearestDeadlineTitle.textContent = `Week ${weeksWithDeadline[0].week_number}`;
-    nearestDeadlineMeta.textContent = formatDate(weeksWithDeadline[0].deadline);
-  } else {
-    nearestDeadlineTitle.textContent = "No deadlines yet";
-    nearestDeadlineMeta.textContent = "Deadlines will appear here.";
-  }
-
-  const totalHours = state.weeks.reduce((sum, week) => sum + (Number(week.hours) || 0), 0);
-  totalWorkloadTitle.textContent = `${totalHours} hours`;
-  totalWorkloadMeta.textContent = "Across all added weeks.";
-
-  weeksPlannedTitle.textContent = String(state.weeks.length);
-  weeksPlannedMeta.textContent = "Structured course units created.";
+      return `
+        <div class="step-pill ${status}">
+          <span>${stepNumber}</span>
+          <span>${label}</span>
+        </div>
+      `;
+    })
+    .join("");
 }
 
-function renderWeeks() {
-  weeksContainer.innerHTML = "";
+function renderUploadStep() {
+  app.innerHTML = `
+    <section class="screen">
+      <div class="screen-card">
+        <p class="screen-label">Step 1</p>
+        <h2>Upload course document</h2>
+        <p class="screen-text">
+          Upload a PDF that should frame the AI analysis and the later study structure.
+        </p>
 
-  if (!state.weeks.length) {
-    weeksContainer.innerHTML = `
-      <div class="empty-state">
-        <h3>No weeks added yet</h3>
-        <p>Use the form on the left to build the semester structure.</p>
+        <div class="upload-box">
+          <input id="pdfInput" type="file" accept="application/pdf" />
+          <p id="fileStatus" class="muted">
+            ${state.documentFile ? `Valgt fil: ${state.documentFile.name}` : "Ingen fil valgt endnu"}
+          </p>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-primary" id="uploadContinueBtn" disabled>
+            Continue
+          </button>
+        </div>
       </div>
-    `;
-    return;
+    </section>
+  `;
+
+  const pdfInput = document.getElementById("pdfInput");
+  const uploadContinueBtn = document.getElementById("uploadContinueBtn");
+  const fileStatus = document.getElementById("fileStatus");
+
+  if (state.documentFile) {
+    uploadContinueBtn.disabled = false;
   }
 
-  const sorted = [...state.weeks].sort((a, b) => {
-    const aNum = a.week_number ?? 9999;
-    const bNum = b.week_number ?? 9999;
-    return aNum - bNum;
+  pdfInput.addEventListener("change", (event) => {
+    const file = event.target.files?.[0] || null;
+    state.documentFile = file;
+
+    if (file) {
+      fileStatus.textContent = `Valgt fil: ${file.name}`;
+      uploadContinueBtn.disabled = false;
+    } else {
+      fileStatus.textContent = "Ingen fil valgt endnu";
+      uploadContinueBtn.disabled = true;
+    }
   });
 
-  for (const week of sorted) {
-    const fragment = weekCardTemplate.content.cloneNode(true);
-
-    fragment.querySelector(".week-label").textContent = `Week ${week.week_number ?? "-"}`;
-    fragment.querySelector(".week-title").textContent = week.task || week.lecture || "Planned week";
-    fragment.querySelector(".priority-badge").textContent = week.priority || "Normal";
-
-    fragment.querySelector(".week-date").textContent = formatDate(week.week_date);
-    fragment.querySelector(".week-deadline").textContent = formatDate(week.deadline);
-    fragment.querySelector(".week-hours").textContent = week.hours ? `${week.hours}h` : "Not set";
-    fragment.querySelector(".week-lecture").textContent = week.lecture || "Not set";
-    fragment.querySelector(".week-reading").textContent = week.reading || "Not set";
-    fragment.querySelector(".week-task").textContent = week.task || "Not set";
-
-    const editBtn = fragment.querySelector(".edit-week-btn");
-    const deleteBtn = fragment.querySelector(".delete-week-btn");
-
-    editBtn.addEventListener("click", () => populateWeekForm(week));
-    deleteBtn.addEventListener("click", async () => {
-      if (!confirm("Delete this week?")) return;
-      await deleteWeek(week.id);
-    });
-
-    weeksContainer.appendChild(fragment);
-  }
+  uploadContinueBtn.addEventListener("click", () => {
+    nextStep();
+  });
 }
 
-function renderFileList() {
-  if (!state.files.length) {
-    fileList.innerHTML = `
-      <div class="empty-file-state">
-        <p class="muted">No files uploaded yet.</p>
+function renderAnalyzeStep() {
+  app.innerHTML = `
+    <section class="screen">
+      <div class="screen-card">
+        <p class="screen-label">Step 2</p>
+        <h2>Analyze document</h2>
+        <p class="screen-text">
+          Her kobler vi senere din PDF-upload og Edge Function på.
+        </p>
+
+        <div class="status-box">
+          <p><strong>Fil:</strong> ${state.documentFile ? state.documentFile.name : "Ingen fil valgt"}</p>
+          <p><strong>Status:</strong> Klar til analyse</p>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-secondary" id="backToUploadBtn">Back</button>
+          <button class="btn btn-primary" id="runAnalysisBtn">Run analysis</button>
+        </div>
       </div>
-    `;
-    return;
-  }
+    </section>
+  `;
 
-  fileList.innerHTML = "";
-
-  state.files.forEach((file) => {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "file-list-item btn btn-secondary";
-    item.textContent = `${file.name} (${file.file_type || "unknown"})`;
-
-    item.addEventListener("click", async () => {
-      filePreviewTitle.textContent = file.name;
-      filePreviewInfo.textContent = file.file_url || "Stored in db";
-      filePreviewContent.textContent = "Document uploaded. Ready for analysis.";
-      filePreviewEmpty.classList.add("hidden");
-      filePreviewBox.classList.remove("hidden");
-    });
-
-    fileList.appendChild(item);
+  document.getElementById("backToUploadBtn").addEventListener("click", () => {
+    previousStep();
   });
-}
 
-async function loadCourse() {
-  const { data, error } = await db
-    .from("Courses")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    console.error("loadCourse error", error);
-    return;
-  }
-
-  state.course = data || null;
-  setCourseForm(state.course);
-  renderCourseHeader();
-}
-
-async function loadWeeks() {
-  if (!state.course?.id) {
-    state.weeks = [];
-    renderWeeks();
-    renderSummary();
-    return;
-  }
-
-  const { data, error } = await db
-    .from("study_plan")
-    .select("*")
-    .eq("course_id", state.course.id)
-    .order("week_number", { ascending: true });
-
-  if (error) {
-    console.error("loadWeeks error", error);
-    return;
-  }
-
-  state.weeks = data || [];
-  renderWeeks();
-  renderSummary();
-}
-
-async function loadFiles() {
-  if (!state.course?.id) {
-    state.files = [];
-    renderFileList();
-    return;
-  }
-
-  const { data, error } = await db
-    .from("course_documents")
-    .select("*")
-    .eq("course_id", state.course.id)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("loadFiles error", error);
-    return;
-  }
-
-  state.files = data || [];
-  renderFileList();
-}
-
-async function saveCourse() {
-  const payload = {
-    title: courseTitleInput.value.trim(),
-    semester: semesterStartInput.value && semesterEndInput.value
-      ? `${semesterStartInput.value} → ${semesterEndInput.value}`
-      : "",
-    semester_start: semesterStartInput.value || null,
-    semester_end: semesterEndInput.value || null,
-    lecture_schedule: lectureScheduleInput.value.trim() || null,
-    note: courseNoteInput.value.trim() || null,
-  };
-
-  if (!payload.title) {
-    alert("Course title is required.");
-    return;
-  }
-
-  if (state.course?.id) {
-    const { data, error } = await db
-      .from("Courses")
-      .update(payload)
-      .eq("id", state.course.id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error("update course error", error);
-      alert("Could not update course.");
-      return;
-    }
-
-    state.course = data;
-  } else {
-    const { data, error } = await db
-      .from("Courses")
-      .insert(payload)
-      .select()
-      .single();
-
-    if (error) {
-      console.error("insert course error", error);
-      alert("Could not save course.");
-      return;
-    }
-
-    state.course = data;
-  }
-
-  renderCourseHeader();
-  await loadWeeks();
-  await loadFiles();
-}
-
-async function saveWeek() {
-  if (!state.course?.id) {
-    alert("Save course first.");
-    return;
-  }
-
-  const payload = {
-    course_id: state.course.id,
-    week_number: numberOrNull(weekNumberInput.value),
-    week_date: weekDateInput.value || null,
-    reading: weekReadingInput.value.trim() || null,
-    lecture: weekLectureInput.value.trim() || null,
-    task: weekTaskInput.value.trim() || null,
-    deadline: weekDeadlineInput.value || null,
-    hours: numberOrNull(weekHoursInput.value),
-    priority: weekPriorityInput.value || "Normal",
-    status: "pending",
-    scheduled_date: weekDateInput.value || null,
-  };
-
-  if (!payload.week_number) {
-    alert("Week number is required.");
-    return;
-  }
-
-  if (state.editingWeekId) {
-    const { error } = await db
-      .from("study_plan")
-      .update(payload)
-      .eq("id", state.editingWeekId);
-
-    if (error) {
-      console.error("update week error", error);
-      alert("Could not update week.");
-      return;
-    }
-  } else {
-    const { error } = await db
-      .from("study_plan")
-      .insert(payload);
-
-    if (error) {
-      console.error("insert week error", error);
-      alert("Could not save week.");
-      return;
-    }
-  }
-
-  resetWeekForm();
-  await loadWeeks();
-}
-
-async function deleteWeek(id) {
-  const { error } = await db
-    .from("study_plan")
-    .delete()
-    .eq("id", id);
-
-  if (error) {
-    console.error("deleteWeek error", error);
-    alert("Could not delete week.");
-    return;
-  }
-
-  if (state.editingWeekId === id) {
-    resetWeekForm();
-  }
-
-  await loadWeeks();
-}
-
-async function resetAllData() {
-  if (!confirm("This will delete the current course, weeks and file metadata. Continue?")) {
-    return;
-  }
-
-  if (state.course?.id) {
-    await db.from("course_documents").delete().eq("course_id", state.course.id);
-    await db.from("study_plan").delete().eq("course_id", state.course.id);
-    await db.from("Courses").delete().eq("id", state.course.id);
-  }
-
-  state.course = null;
-  state.weeks = [];
-  state.files = [];
-  state.editingWeekId = null;
-
-  courseForm.reset();
-  resetWeekForm();
-  renderCourseHeader();
-  renderWeeks();
-  renderSummary();
-  renderFileList();
-
-  filePreviewBox.classList.add("hidden");
-  filePreviewEmpty.classList.remove("hidden");
-}
-
-async function uploadFiles(files) {
-  if (!state.course?.id) {
-    alert("Save course first.");
-    return;
-  }
-
-  for (const file of files) {
-    const filePath = `${state.course.id}/${Date.now()}-${file.name}`;
-
-    const { error: uploadError } = await db.storage
-      .from("course-files")
-      .upload(filePath, file, { upsert: false });
-
-    if (uploadError) {
-      console.error("upload error", uploadError);
-      alert(`Could not upload ${file.name}`);
-      continue;
-    }
-
-    const { data: publicData } = db.storage
-      .from("course-files")
-      .getPublicUrl(filePath);
-
-    const { error: insertError } = await db
-      .from("course_documents")
-      .insert({
-        course_id: state.course.id,
-        name: file.name,
-        file_url: publicData.publicUrl,
-        file_type: file.type || "unknown",
-        ai_processed: false,
-      });
-
-    if (insertError) {
-      console.error("course_documents insert error", insertError);
-      alert(`Could not save metadata for ${file.name}`);
-    }
-  }
-
-  await loadFiles();
-}
-
-async function extractTextFromPdfUrl(pdfUrl) {
-  if (!window.pdfjsLib) {
-    throw new Error("pdf.js is not loaded.");
-  }
-
-  const pdfjsLib = window.pdfjsLib;
-  pdfjsLib.GlobalWorkerOptions.workerSrc =
-    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.js";
-
-  const loadingTask = pdfjsLib.getDocument(pdfUrl);
-  const pdf = await loadingTask.promise;
-
-  let fullText = "";
-
-  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
-    const page = await pdf.getPage(pageNum);
-    const textContent = await page.getTextContent();
-    const pageText = textContent.items.map((item) => item.str).join(" ");
-    fullText += `\n\n${pageText}`;
-  }
-
-  return fullText.trim();
-}
-
-function mapAiItemToStudyPlanRow(item, index, courseId) {
-  const rawDate = typeof item.date === "string" ? item.date : "";
-  const weekMatch = rawDate.match(/week\s*(\d+)/i);
-  const weekNumber = weekMatch ? Number(weekMatch[1]) : index + 1;
-
-  const readings = Array.isArray(item.readings) ? item.readings.join(" | ") : null;
-
-  if (item.type === "event") {
-    return {
-      course_id: courseId,
-      week_number: weekNumber,
-      week_date: null,
-      reading: null,
-      lecture: item.title || item.topic || "Event",
-      task: item.title || item.assignment || "Event",
-      deadline: null,
-      hours: null,
-      priority: "High",
-      status: "pending",
-      scheduled_date: null,
+  document.getElementById("runAnalysisBtn").addEventListener("click", () => {
+    // Midlertidig mockdata indtil vi kobler rigtig analyse på
+    state.extractedData = {
+      title: "Retorik",
+      semesterStart: "2026-02-01",
+      semesterEnd: "2026-06-30",
+      lectureSchedule: "Tirsdag 10:00–12:00",
+      weeks: [
+        { week: 1, topic: "Introduktion" },
+        { week: 2, topic: "Genreteori" },
+        { week: 3, topic: "Argumentation" },
+      ],
     };
-  }
 
-  return {
-    course_id: courseId,
-    week_number: weekNumber,
-    week_date: null,
-    reading: readings,
-    lecture: item.topic || null,
-    task: item.assignment || null,
-    deadline: null,
-    hours: null,
-    priority: "Normal",
-    status: "pending",
-    scheduled_date: null,
-  };
+    nextStep();
+  });
 }
 
-async function analyzeLatestPdfAndPopulateStudyPlan() {
-  if (!state.course?.id) {
-    alert("Save course first.");
-    return;
-  }
+function renderReviewStep() {
+  const data = state.extractedData;
 
-  const pdfFiles = state.files.filter(
-    (file) =>
-      file.file_type === "application/pdf" ||
-      String(file.name || "").toLowerCase().endsWith(".pdf")
-  );
+  app.innerHTML = `
+    <section class="screen">
+      <div class="screen-card">
+        <p class="screen-label">Step 3</p>
+        <h2>Review extracted course info</h2>
+        <p class="screen-text">
+          Brugeren skal kunne gennemse og godkende det AI'en har fundet.
+        </p>
 
-  if (!pdfFiles.length) {
-    alert("No PDF uploaded yet.");
-    return;
-  }
+        <div class="review-grid">
+          <label>
+            <span>Course title</span>
+            <input id="reviewTitle" type="text" value="${data?.title || ""}" />
+          </label>
 
-  const latestPdf = pdfFiles[0];
+          <label>
+            <span>Semester start</span>
+            <input id="reviewStart" type="date" value="${data?.semesterStart || ""}" />
+          </label>
 
-  const confirmed = confirm(
-    `Analyze this document and generate study plan items?\n\n${latestPdf.name}`
-  );
+          <label>
+            <span>Semester end</span>
+            <input id="reviewEnd" type="date" value="${data?.semesterEnd || ""}" />
+          </label>
 
-  if (!confirmed) {
-    return;
-  }
+          <label>
+            <span>Lecture schedule</span>
+            <input id="reviewSchedule" type="text" value="${data?.lectureSchedule || ""}" />
+          </label>
+        </div>
 
-  try {
-    analyzePdfBtn.disabled = true;
-    analyzePdfBtn.textContent = "Analyzing...";
+        <div class="weeks-preview">
+          <h3>Extracted weeks</h3>
+          ${
+            data?.weeks?.length
+              ? data.weeks
+                  .map(
+                    (item) => `
+                      <div class="week-row">
+                        <span>Week ${item.week}</span>
+                        <span>${item.topic}</span>
+                      </div>
+                    `
+                  )
+                  .join("")
+              : `<p class="muted">Ingen uger fundet endnu</p>`
+          }
+        </div>
 
-    filePreviewTitle.textContent = latestPdf.name;
-    filePreviewInfo.textContent = latestPdf.file_url || "PDF selected";
-    filePreviewContent.textContent = "Extracting text from PDF...";
-    filePreviewEmpty.classList.add("hidden");
-    filePreviewBox.classList.remove("hidden");
+        <div class="actions">
+          <button class="btn btn-secondary" id="backToAnalyzeBtn">Back</button>
+          <button class="btn btn-primary" id="saveReviewBtn">Continue</button>
+        </div>
+      </div>
+    </section>
+  `;
 
-    const extractedText = await extractTextFromPdfUrl(latestPdf.file_url);
+  document.getElementById("backToAnalyzeBtn").addEventListener("click", () => {
+    previousStep();
+  });
 
-    if (!extractedText || extractedText.length < 20) {
-      throw new Error("Very little text was extracted from the PDF.");
-    }
+  document.getElementById("saveReviewBtn").addEventListener("click", () => {
+    state.extractedData = {
+      ...state.extractedData,
+      title: document.getElementById("reviewTitle").value.trim(),
+      semesterStart: document.getElementById("reviewStart").value,
+      semesterEnd: document.getElementById("reviewEnd").value,
+      lectureSchedule: document.getElementById("reviewSchedule").value.trim(),
+    };
 
-    filePreviewContent.textContent = "Sending extracted text to AI...";
+    nextStep();
+  });
+}
 
-    const aiResult = await analyzeCourseText(extractedText);
+function renderConfirmStep() {
+  const data = state.extractedData;
 
-    if (!aiResult?.items?.length) {
-      alert("AI found no usable study items in this PDF.");
-      return;
-    }
+  app.innerHTML = `
+    <section class="screen">
+      <div class="screen-card">
+        <p class="screen-label">Step 4</p>
+        <h2>Confirm and generate plan</h2>
+        <p class="screen-text">
+          Nu bekræftes den struktur, der senere skal skabe dashboardet.
+        </p>
 
-    const secondConfirm = confirm(
-      `AI found ${aiResult.items.length} items. Insert them into your study plan?`
-    );
+        <div class="summary-box">
+          <p><strong>Course:</strong> ${data?.title || "-"}</p>
+          <p><strong>Semester:</strong> ${data?.semesterStart || "-"} → ${data?.semesterEnd || "-"}</p>
+          <p><strong>Schedule:</strong> ${data?.lectureSchedule || "-"}</p>
+          <p><strong>Weeks:</strong> ${data?.weeks?.length || 0}</p>
+        </div>
 
-    if (!secondConfirm) {
-      filePreviewContent.textContent = "Analysis completed, but insertion was cancelled.";
-      return;
-    }
+        <div class="actions">
+          <button class="btn btn-secondary" id="backToReviewBtn">Back</button>
+          <button class="btn btn-primary" id="confirmPlanBtn">Generate dashboard</button>
+        </div>
+      </div>
+    </section>
+  `;
 
-    const rows = aiResult.items.map((item, index) =>
-      mapAiItemToStudyPlanRow(item, index, state.course.id)
-    );
+  document.getElementById("backToReviewBtn").addEventListener("click", () => {
+    previousStep();
+  });
 
-    const { error: deleteError } = await db
-      .from("study_plan")
-      .delete()
-      .eq("course_id", state.course.id);
+  document.getElementById("confirmPlanBtn").addEventListener("click", () => {
+    state.confirmedPlan = {
+      createdAt: new Date().toISOString(),
+      ...state.extractedData,
+    };
 
-    if (deleteError) {
-      throw deleteError;
-    }
+    nextStep();
+  });
+}
 
-    const { error: insertError } = await db
-      .from("study_plan")
-      .insert(rows);
+function renderDashboardStep() {
+  const plan = state.confirmedPlan;
 
-    if (insertError) {
-      throw insertError;
-    }
+  app.innerHTML = `
+    <section class="screen">
+      <div class="screen-card">
+        <p class="screen-label">Step 5</p>
+        <h2>Dashboard</h2>
+        <p class="screen-text">
+          Dette er slutmålet: et dashboard genereret på baggrund af dokument + review + bekræftelse.
+        </p>
 
-    const { error: updateError } = await db
-      .from("course_documents")
-      .update({ ai_processed: true })
-      .eq("id", latestPdf.id);
+        <div class="dashboard-card">
+          <h3>${plan?.title || "Untitled course"}</h3>
+          <p><strong>Schedule:</strong> ${plan?.lectureSchedule || "-"}</p>
+          <p><strong>Semester:</strong> ${plan?.semesterStart || "-"} → ${plan?.semesterEnd || "-"}</p>
+        </div>
 
-    if (updateError) {
-      console.error("course_documents update error", updateError);
-    }
+        <div class="weeks-preview">
+          <h3>Weeks</h3>
+          ${
+            plan?.weeks?.length
+              ? plan.weeks
+                  .map(
+                    (item) => `
+                      <div class="week-row">
+                        <span>Week ${item.week}</span>
+                        <span>${item.topic}</span>
+                      </div>
+                    `
+                  )
+                  .join("")
+              : `<p class="muted">Ingen uger endnu</p>`
+          }
+        </div>
 
-    filePreviewContent.textContent =
-      `Analysis complete. ${rows.length} study plan items were created.`;
+        <div class="actions">
+          <button class="btn btn-secondary" id="restartFlowBtn">Start over</button>
+        </div>
+      </div>
+    </section>
+  `;
 
-    await loadWeeks();
-    await loadFiles();
-  } catch (error) {
-    console.error("analyzeLatestPdfAndPopulateStudyPlan error", error);
-    alert(error.message || "Could not analyze PDF.");
-    filePreviewContent.textContent =
-      `Analysis failed: ${error.message || "Unknown error"}`;
-  } finally {
-    analyzePdfBtn.disabled = false;
-    analyzePdfBtn.textContent = "Analyze document";
+  document.getElementById("restartFlowBtn").addEventListener("click", () => {
+    state.currentStep = 1;
+    state.documentFile = null;
+    state.extractedData = null;
+    state.confirmedPlan = null;
+    renderApp();
+  });
+}
+
+function renderApp() {
+  renderStepIndicator();
+
+  switch (state.currentStep) {
+    case 1:
+      renderUploadStep();
+      break;
+    case 2:
+      renderAnalyzeStep();
+      break;
+    case 3:
+      renderReviewStep();
+      break;
+    case 4:
+      renderConfirmStep();
+      break;
+    case 5:
+      renderDashboardStep();
+      break;
+    default:
+      renderUploadStep();
   }
 }
 
-function clearFilesUI() {
-  state.files = [];
-  renderFileList();
-  filePreviewBox.classList.add("hidden");
-  filePreviewEmpty.classList.remove("hidden");
-}
-
-courseForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  await saveCourse();
-});
-
-weekForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  await saveWeek();
-});
-
-resetAllBtn.addEventListener("click", async () => {
-  await resetAllData();
-});
-
-clearWeekFormBtn.addEventListener("click", () => {
-  resetWeekForm();
-});
-
-uploadBtn.addEventListener("click", () => {
-  fileUpload.click();
-});
-
-fileUpload.addEventListener("change", async (event) => {
-  const files = Array.from(event.target.files || []);
-  if (!files.length) return;
-  await uploadFiles(files);
-  fileUpload.value = "";
-});
-
-clearFilesBtn.addEventListener("click", () => {
-  clearFilesUI();
-});
-
-analyzePdfBtn?.addEventListener("click", async () => {
-  await analyzeLatestPdfAndPopulateStudyPlan();
-});
-
-async function boot() {
-  renderCourseHeader();
-  renderWeeks();
-  renderSummary();
-  renderFileList();
-
-  await loadCourse();
-  await loadWeeks();
-  await loadFiles();
-}
-
-boot();
+renderApp();
