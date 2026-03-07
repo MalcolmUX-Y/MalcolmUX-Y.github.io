@@ -135,7 +135,6 @@ async function analyzeCourseText(text) {
 
   if (SUPABASE_ANON_KEY.trim()) {
     headers.apikey = SUPABASE_ANON_KEY.trim();
-    headers.Authorization = `Bearer ${SUPABASE_ANON_KEY.trim()}`;
   }
 
   const response = await fetch(SUPABASE_FUNCTION_URL, {
