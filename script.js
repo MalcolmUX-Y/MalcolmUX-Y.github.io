@@ -30,13 +30,7 @@ function previousStep() {
 }
 
 function renderStepIndicator() {
-  const labels = [
-    "Upload",
-    "Analyze",
-    "Review",
-    "Confirm",
-    "Dashboard",
-  ];
+  const labels = ["Upload", "Analyze", "Review", "Confirm", "Dashboard"];
 
   stepIndicator.innerHTML = labels
     .map((label, index) => {
@@ -68,27 +62,27 @@ function renderUploadStep() {
           Upload a PDF that should frame the AI analysis and the later study structure.
         </p>
 
-<div class="upload-box">
+        <div class="upload-box">
+          <input id="pdfInput" type="file" accept="application/pdf" />
 
-  <input id="pdfInput" type="file" accept="application/pdf" />
-
-  ${
-    state.documentFile
-      ? `
-        <div class="file-preview">
-          <div>
-            <strong>${state.documentFile.name}</strong>
-            <p class="muted">PDF selected and ready for analysis</p>
-          </div>
+          ${
+            state.documentFile
+              ? `
+                <div class="file-preview">
+                  <div class="file-preview-main">
+                    <strong>${state.documentFile.name}</strong>
+                    <p class="muted">PDF selected and ready for analysis</p>
+                  </div>
+                </div>
+              `
+              : `<p class="muted">Ingen fil valgt endnu</p>`
+          }
         </div>
-      `
-      : `<p class="muted">Ingen fil valgt endnu</p>`
-  }
-
-</div>
 
         <div class="actions">
-          <button class="btn btn-primary" id="uploadContinueBtn" disabled>
+          <button class="btn btn-primary" id="uploadContinueBtn" ${
+            state.documentFile ? "" : "disabled"
+          }>
             Continue
           </button>
         </div>
@@ -98,23 +92,11 @@ function renderUploadStep() {
 
   const pdfInput = document.getElementById("pdfInput");
   const uploadContinueBtn = document.getElementById("uploadContinueBtn");
-  const fileStatus = document.getElementById("fileStatus");
-
-  if (state.documentFile) {
-    uploadContinueBtn.disabled = false;
-  }
 
   pdfInput.addEventListener("change", (event) => {
     const file = event.target.files?.[0] || null;
     state.documentFile = file;
-
-    if (file) {
-      fileStatus.textContent = `Valgt fil: ${file.name}`;
-      uploadContinueBtn.disabled = false;
-    } else {
-      fileStatus.textContent = "Ingen fil valgt endnu";
-      uploadContinueBtn.disabled = true;
-    }
+    renderApp();
   });
 
   uploadContinueBtn.addEventListener("click", () => {
@@ -134,7 +116,12 @@ function renderAnalyzeStep() {
 
         <div class="status-box">
           <p><strong>Fil:</strong> ${state.documentFile ? state.documentFile.name : "Ingen fil valgt"}</p>
-          <p><strong>Status:</strong> Klar til analyse</p>
+          <p><strong>Status:</strong> Waiting for analysis</p>
+
+          <div class="analysis-indicator">
+            <div class="spinner"></div>
+            <span class="muted">AI preparing extraction pipeline</span>
+          </div>
         </div>
 
         <div class="actions">
@@ -150,7 +137,6 @@ function renderAnalyzeStep() {
   });
 
   document.getElementById("runAnalysisBtn").addEventListener("click", () => {
-    // Midlertidig mockdata indtil vi kobler rigtig analyse på
     state.extractedData = {
       title: "Retorik",
       semesterStart: "2026-02-01",
