@@ -39,24 +39,22 @@ pre {
   margin-top: 0;
 }
 
+/* ===============================
+   NEW APP LAYOUT (workflow UI)
+================================ */
+
 .app-shell {
-  display: grid;
-  grid-template-columns: 420px 1fr;
-  min-height: 100vh;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 40px 24px 60px;
 }
 
-.sidebar {
-  padding: 28px;
-  border-right: 1px solid var(--border);
-  background: linear-gradient(180deg, #091427 0%, #0a1426 100%);
-}
-
-.main-content {
-  padding: 28px;
-}
-
-.brand-block {
-  margin-bottom: 22px;
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 26px;
 }
 
 .eyebrow {
@@ -68,53 +66,95 @@ pre {
 }
 
 h1 {
-  font-size: 46px;
-  line-height: 0.95;
-  margin-bottom: 12px;
+  font-size: 42px;
+  line-height: 1;
+  margin-bottom: 6px;
 }
 
-.brand-copy {
-  color: var(--muted);
-  line-height: 1.5;
-  max-width: 320px;
+/* ===============================
+   STEP INDICATOR
+================================ */
+
+.step-indicator {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.panel {
+.step-pill {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: var(--panel);
+}
+
+.step-pill span:first-child {
+  font-weight: 600;
+}
+
+.step-pill.active {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(77,141,255,0.15);
+}
+
+.step-pill.done {
+  opacity: 0.6;
+}
+
+/* ===============================
+   WORKFLOW SCREENS
+================================ */
+
+.screen {
+  min-height: 60vh;
+}
+
+.screen-card {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px;
+  padding: 28px;
   box-shadow: var(--shadow);
 }
 
-.panel + .panel {
-  margin-top: 18px;
+.screen-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #92b4f6;
+  margin-bottom: 8px;
 }
 
-.panel-header {
-  margin-bottom: 16px;
+.screen-card h2 {
+  margin-bottom: 10px;
+  font-size: 28px;
 }
 
-.panel-header h2 {
-  margin-bottom: 6px;
-  font-size: 22px;
-}
-
-.panel-header p {
+.screen-text {
   color: var(--muted);
-  margin-bottom: 0;
+  line-height: 1.5;
+  margin-bottom: 20px;
 }
 
-.form-grid {
+/* ===============================
+   FORM ELEMENTS
+================================ */
+
+.review-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 14px;
+  margin-bottom: 18px;
 }
 
 label {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 label span {
@@ -147,11 +187,11 @@ textarea {
   min-height: 90px;
 }
 
-.full-width {
-  grid-column: 1 / -1;
-}
+/* ===============================
+   BUTTONS
+================================ */
 
-.button-row {
+.actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -199,307 +239,70 @@ textarea {
   background: var(--danger-hover);
 }
 
-.btn-small {
-  padding: 10px 14px;
-  font-size: 14px;
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
-.topbar {
-  margin-bottom: 22px;
+/* ===============================
+   CONTENT BLOCKS
+================================ */
+
+.upload-box,
+.status-box,
+.summary-box,
+.dashboard-card,
+.weeks-preview {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  background: var(--panel-2);
+  margin-bottom: 18px;
 }
 
-.topbar h2 {
-  font-size: 34px;
-  margin-bottom: 8px;
+.week-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.week-row:last-child {
+  border-bottom: none;
 }
 
 .muted {
   color: var(--muted);
 }
 
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.summary-card {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 18px;
-  box-shadow: var(--shadow);
-  min-height: 145px;
-}
-
-.summary-label {
-  color: #92b4f6;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-bottom: 10px;
-}
-
-.summary-card h3 {
-  font-size: 24px;
-  margin-bottom: 8px;
-  line-height: 1.2;
-}
-
-.timeline-panel {
-  min-height: 420px;
-}
-
-.weeks-container {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-}
-
-.empty-state {
-  grid-column: 1 / -1;
-  border: 1px dashed var(--border);
-  border-radius: 16px;
-  padding: 28px;
-  color: var(--muted);
-  text-align: center;
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.week-card {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 18px;
-}
-
-.week-card-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.week-label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #92b4f6;
-  margin-bottom: 8px;
-}
-
-.week-title {
-  margin-bottom: 0;
-  font-size: 24px;
-}
-
-.priority-badge {
-  padding: 7px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  border: 1px solid var(--border);
-  background: #172744;
-  color: #d5e5ff;
-  white-space: nowrap;
-}
-
-.priority-high {
-  background: rgba(234, 179, 8, 0.14);
-  color: #ffe189;
-  border-color: rgba(234, 179, 8, 0.35);
-}
-
-.priority-critical {
-  background: rgba(217, 95, 95, 0.14);
-  color: #ff9e9e;
-  border-color: rgba(217, 95, 95, 0.35);
-}
-
-.week-meta-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-bottom: 16px;
-}
-
-.meta-label {
-  margin-bottom: 6px;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #92b4f6;
-}
-
-.week-content {
-  display: grid;
-  gap: 14px;
-  margin-bottom: 16px;
-}
-
-.week-content p:last-child,
-.week-meta-grid p:last-child {
-  margin-bottom: 0;
-}
-
-.week-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-}
-
-/* Upload */
-
-.upload-block {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.upload-help {
-  font-size: 13px;
-  line-height: 1.45;
-  margin-bottom: 0;
-}
-
-.file-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.empty-file-state {
-  border: 1px dashed var(--border);
-  border-radius: 14px;
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.empty-file-state p {
-  margin: 0;
-}
-
-.file-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--panel-2);
-}
-
-.file-item-main {
-  min-width: 0;
-  flex: 1;
-}
-
-.file-name {
-  margin-bottom: 6px;
-  font-weight: 600;
-  word-break: break-word;
-}
-
-.file-meta {
-  margin-bottom: 0;
-  color: var(--muted);
-  font-size: 13px;
-  word-break: break-word;
-}
-
-.file-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-/* Preview */
-
-.preview-panel {
-  margin-bottom: 18px;
-}
-
-.file-preview-box {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.file-preview-meta h3 {
-  margin-bottom: 6px;
-}
-
-.file-preview-meta p {
-  margin-bottom: 0;
-}
-
-.file-preview-content {
-  margin: 0;
-  padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--panel-2);
-  color: var(--text);
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-x: auto;
-  max-height: 420px;
-  line-height: 1.5;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
+/* ===============================
+   LEGACY DASHBOARD STYLES
+   (kept from your original CSS)
+================================ */
 
 .hidden {
   display: none;
 }
 
-@media (max-width: 1280px) {
-  .summary-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
+/* Responsive */
 
-  .weeks-container {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 980px) {
-  .app-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
+@media (max-width: 900px) {
+  .step-indicator {
+    margin-top: 12px;
   }
 }
 
 @media (max-width: 640px) {
-  .summary-grid,
-  .form-grid,
-  .week-meta-grid {
+  .review-grid {
     grid-template-columns: 1fr;
   }
 
-  .button-row,
-  .week-actions,
-  .file-item,
-  .file-actions {
+  .actions {
     flex-direction: column;
-    align-items: stretch;
   }
 
   h1 {
-    font-size: 38px;
-  }
-
-  .topbar h2 {
-    font-size: 28px;
-  }
-
-  .main-content,
-  .sidebar {
-    padding: 20px;
+    font-size: 34px;
   }
 }
