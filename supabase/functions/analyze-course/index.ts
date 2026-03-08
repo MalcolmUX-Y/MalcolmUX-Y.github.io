@@ -243,20 +243,37 @@ function localParseSegment(segment: string): CourseItem[] {
 
   if (!lines.length) return [];
 
-  const firstLine = lines[0];
-  const date = extractDateFromLine(firstLine) ?? "";
-  const content = lines.slice(1).join(" ");
+  const nonWeekLines = lines.filter((line) => !isWeekLine(line));
+
+  if (!nonWeekLines.length) return [];
+
+  const headerLine = nonWeekLines[0];
+  const dateSourceLine = lines.find((line) => isDateLine(line)) ?? headerLine;
+  const date = extractDateFromLine(dateSourceLine) ?? "";
+  const content = nonWeekLines.slice(1).join(" ");
 
   if (looksLikeEventLine(segment)) {
     return [
       {
         type: "event",
         date,
-        title: firstLine,
+        title: headerLine,
         notes: content,
       },
     ];
   }
+
+  return [
+    {
+      type: "session",
+      date,
+      topic: headerLine,
+      readings: [],
+      assignment: "",
+      notes: content,
+    },
+  ];
+}
 
   return [
     {
