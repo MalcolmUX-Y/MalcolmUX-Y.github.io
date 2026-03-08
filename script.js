@@ -9,6 +9,7 @@ const SUPABASE_ANON_KEY_TRIMMED = SUPABASE_ANON_KEY.trim();
 const state = {
   currentStep: 1,
   documentFile: null,
+  pdfPreviewUrl: "",
   extractedData: null,
   confirmedPlan: null,
   analysisStatus: "idle", // idle | running | success | error
@@ -32,8 +33,13 @@ function escapeHtml(value) {
 }
 
 function resetFlowState() {
+  if (state.pdfPreviewUrl) {
+    URL.revokeObjectURL(state.pdfPreviewUrl);
+  }
+
   state.currentStep = 1;
   state.documentFile = null;
+  state.pdfPreviewUrl = "";
   state.extractedData = null;
   state.confirmedPlan = null;
   state.analysisStatus = "idle";
@@ -148,7 +154,7 @@ async function analyzeCourseText(text) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(data?.error || "Edge Function request fejlede.");
+    throw new Error(data?.error || "Analysis request failed.");
   }
 
   return data;
@@ -245,29 +251,44 @@ function mapItemsToUiModel(items) {
 
   const weeks = orderedEntries.map((entry, index) => {
     const isoDate = normalizeDateString(entry.date);
+    const parsedFromText = parseStructuredSessionText(entry);
+
+    const sourceText =
+      typeof entry.text === "string"
+        ? entry.text
+        : typeof entry.sourceText === "string"
+        ? entry.sourceText
+        : typeof entry.content === "string"
+        ? entry.content
+        : "";
 
     if (entry.type === "session") {
       return {
         week: index + 1,
         kind: "session",
-        date: isoDate,
-        rawDate: entry.date || "",
-        topic: entry.topic || "Untitled session",
-        readings: Array.isArray(entry.readings) ? entry.readings : [],
+        date: isoDate || parsedFromText.date,
+        rawDate: entry.date || parsedFromText.rawDate || "",
+        topic: entry.topic || parsedFromText.topic || "Untitled session",
+        readings:
+          Array.isArray(entry.readings) && entry.readings.length
+            ? entry.readings
+            : parsedFromText.readings,
         assignment: entry.assignment || "",
-        notes: entry.notes || "",
+        notes: entry.notes || parsedFromText.notes,
+        sourceText,
       };
     }
 
     return {
       week: index + 1,
       kind: "event",
-      date: isoDate,
-      rawDate: entry.date || "",
-      topic: entry.title || "Untitled event",
-      readings: [],
+      date: isoDate || parsedFromText.date,
+      rawDate: entry.date || parsedFromText.rawDate || "",
+      topic: entry.title || parsedFromText.topic || "Untitled event",
+      readings: parsedFromText.readings,
       assignment: "",
-      notes: entry.notes || "",
+      notes: entry.notes || parsedFromText.notes,
+      sourceText,
     };
   });
 
@@ -281,6 +302,79 @@ function mapItemsToUiModel(items) {
     teachers: Array.isArray(courseInfo?.teachers) ? courseInfo.teachers : [],
     courseNotes: courseInfo?.notes || "",
     weeks,
+  };
+}
+
+function parseStructuredSessionText(entry) {
+  const sourceCandidates = [entry?.text, entry?.sourceText, entry?.content].filter(
+    (value) => typeof value === "string" && value.trim()
+  );
+
+  const source = sourceCandidates[0] || "";
+  if (!source) {
+    return { date: "", rawDate: "", topic: "", readings: [], notes: "" };
+  }
+
+  const lines = source
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  let rawDate = "";
+  let topic = "";
+  let notes = "";
+  let readings = [];
+
+  for (const line of lines) {
+    if (!rawDate) {
+      const dateLabelMatch = line.match(/^(date|dato)\s*[:\-]\s*(.+)$/i);
+      if (dateLabelMatch) {
+        rawDate = dateLabelMatch[2].trim();
+        continue;
+      }
+
+      const directDateMatch = line.match(/(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}|\d{4}-\d{2}-\d{2})/);
+      if (directDateMatch) {
+        rawDate = directDateMatch[1].trim();
+      }
+    }
+
+    if (!topic) {
+      const topicMatch = line.match(/^(topic|emne|title|titel)\s*[:\-]\s*(.+)$/i);
+      if (topicMatch) {
+        topic = topicMatch[2].trim();
+        continue;
+      }
+    }
+
+    if (!notes) {
+      const notesMatch = line.match(/^(notes?|noter?)\s*[:\-]\s*(.+)$/i);
+      if (notesMatch) {
+        notes = notesMatch[2].trim();
+      }
+    }
+
+    if (!readings.length) {
+      const readingsMatch = line.match(/^(readings?|pensum|litteratur)\s*[:\-]\s*(.+)$/i);
+      if (readingsMatch) {
+        readings = readingsMatch[2]
+          .split(/[;,|]/)
+          .map((part) => part.trim())
+          .filter(Boolean);
+      }
+    }
+  }
+
+  if (!topic) {
+    topic = lines[0] || "";
+  }
+
+  return {
+    date: normalizeDateString(rawDate),
+    rawDate,
+    topic,
+    readings,
+    notes,
   };
 }
 
@@ -310,7 +404,7 @@ function renderWeeksList(items, emptyText) {
           }
           ${
             item.notes
-              ? `<div class="muted week-row-meta">Notes: ${escapeHtml(item.notes)}</div>`
+              ? `<div class="muted week-row-meta">Preparation / Tasks: ${escapeHtml(item.notes)}</div>`
               : ""
           }
         </div>
@@ -377,6 +471,20 @@ function renderUploadStep() {
                     <strong>${escapeHtml(state.documentFile.name)}</strong>
                     <p class="muted">PDF selected and ready for analysis</p>
                   </div>
+                  ${
+                    state.pdfPreviewUrl
+                      ? `
+                        <div class="pdf-preview">
+                          <p class="muted">Preview</p>
+                          <iframe
+                            title="PDF preview"
+                            src="${escapeHtml(state.pdfPreviewUrl)}"
+                            loading="lazy"
+                          ></iframe>
+                        </div>
+                      `
+                      : ""
+                  }
                 </div>
               `
               : `<p class="muted">Ingen fil valgt endnu</p>`
@@ -400,7 +508,12 @@ function renderUploadStep() {
   pdfInput.addEventListener("change", (event) => {
     const file = event.target.files?.[0] || null;
 
+    if (state.pdfPreviewUrl) {
+      URL.revokeObjectURL(state.pdfPreviewUrl);
+    }
+
     state.documentFile = file;
+    state.pdfPreviewUrl = file ? URL.createObjectURL(file) : "";
     state.extractedData = null;
     state.confirmedPlan = null;
     state.analysisStatus = "idle";
@@ -462,7 +575,7 @@ function renderAnalyzeStep() {
         <p class="screen-label">Step 2</p>
         <h2>Analyze document</h2>
         <p class="screen-text">
-          PDF'en læses, tekst udtrækkes og sendes til din Edge Function.
+          PDF'en læses, tekst udtrækkes og sendes til AI-analyse.
         </p>
 
         <div class="status-box">
@@ -515,31 +628,16 @@ function renderReviewStep() {
           Gennemse og ret det AI'en har fundet, før planen bekræftes.
         </p>
 
-        <div class="review-grid">
+        <div class="review-grid review-grid-single">
           <label>
             <span>Course title</span>
             <input id="reviewTitle" type="text" value="${escapeHtml(data?.title || "")}" />
-          </label>
-
-          <label>
-            <span>Semester start</span>
-            <input id="reviewStart" type="date" value="${escapeHtml(data?.semesterStart || "")}" />
-          </label>
-
-          <label>
-            <span>Semester end</span>
-            <input id="reviewEnd" type="date" value="${escapeHtml(data?.semesterEnd || "")}" />
-          </label>
-
-          <label>
-            <span>Lecture schedule</span>
-            <input id="reviewSchedule" type="text" value="${escapeHtml(data?.lectureSchedule || "")}" />
           </label>
         </div>
 
         <div class="weeks-preview">
           <h3>Extracted sessions and events</h3>
-          ${renderWeeksList(data?.weeks, "Ingen sessions eller events fundet endnu")}
+          ${renderSessionReviewCards(data?.weeks)}
         </div>
 
         <div class="actions">
@@ -555,16 +653,81 @@ function renderReviewStep() {
   });
 
   document.getElementById("saveReviewBtn").addEventListener("click", () => {
+    const reviewedWeeks = (state.extractedData?.weeks || []).map((week, index) => {
+      const prefix = `session-${index}`;
+      const readingsValue = document.getElementById(`${prefix}-readings`).value;
+
+      return {
+        ...week,
+        date: document.getElementById(`${prefix}-date`).value,
+        topic: document.getElementById(`${prefix}-topic`).value.trim(),
+        readings: readingsValue
+          .split("\n")
+          .map((item) => item.trim())
+          .filter(Boolean),
+        notes: document.getElementById(`${prefix}-notes`).value.trim(),
+      };
+    });
+
     state.extractedData = {
       ...state.extractedData,
       title: document.getElementById("reviewTitle").value.trim(),
-      semesterStart: document.getElementById("reviewStart").value,
-      semesterEnd: document.getElementById("reviewEnd").value,
-      lectureSchedule: document.getElementById("reviewSchedule").value.trim(),
+      weeks: reviewedWeeks,
     };
 
     nextStep();
   });
+}
+
+function renderSessionReviewCards(items) {
+  if (!items?.length) {
+    return `<p class="muted">Ingen sessions eller events fundet endnu</p>`;
+  }
+
+  return `<div class="session-card-list">${items
+    .map((item, index) => {
+      const prefix = `session-${index}`;
+      const kindLabel = item.kind === "event" ? "Event" : "Session";
+      const dateLabel = item.date ? toDisplayDate(item.date) : item.rawDate || "No date";
+      const topicLabel = item.topic || "Untitled topic";
+
+      return `
+        <article class="session-card">
+          <div class="session-card-title-row">
+            <p class="session-kind-chip">${escapeHtml(kindLabel)}</p>
+            <h4>${escapeHtml(`${dateLabel} — ${topicLabel}`)}</h4>
+          </div>
+
+          <div class="review-grid review-grid-session">
+            <label>
+              <span>Date</span>
+              <input id="${prefix}-date" type="date" value="${escapeHtml(item.date || "")}" />
+            </label>
+
+            <label>
+              <span>Topic</span>
+              <input id="${prefix}-topic" type="text" value="${escapeHtml(item.topic || "")}" />
+            </label>
+
+            <label>
+              <span>Readings (one per line)</span>
+              <textarea id="${prefix}-readings">${escapeHtml((item.readings || []).join("\n"))}</textarea>
+            </label>
+
+            <label>
+              <span>Preparation / Tasks</span>
+              <textarea id="${prefix}-notes">${escapeHtml(item.notes || "")}</textarea>
+            </label>
+          </div>
+
+          <details class="source-text-toggle">
+            <summary>Source text</summary>
+            <pre>${escapeHtml(item.sourceText || "No source text available")}</pre>
+          </details>
+        </article>
+      `;
+    })
+    .join("")}</div>`;
 }
 
 function renderConfirmStep() {
@@ -581,8 +744,6 @@ function renderConfirmStep() {
 
         <div class="summary-box">
           <p><strong>Course:</strong> ${escapeHtml(data?.title || "-")}</p>
-          <p><strong>Semester:</strong> ${escapeHtml(data?.semesterStart || "-")} → ${escapeHtml(data?.semesterEnd || "-")}</p>
-          <p><strong>Schedule:</strong> ${escapeHtml(data?.lectureSchedule || "-")}</p>
           <p><strong>Items:</strong> ${data?.weeks?.length || 0}</p>
         </div>
 
@@ -622,8 +783,7 @@ function renderDashboardStep() {
 
         <div class="dashboard-card">
           <h3>${escapeHtml(plan?.title || "Untitled course")}</h3>
-          <p><strong>Schedule:</strong> ${escapeHtml(plan?.lectureSchedule || "-")}</p>
-          <p><strong>Semester:</strong> ${escapeHtml(plan?.semesterStart || "-")} → ${escapeHtml(plan?.semesterEnd || "-")}</p>
+          <p><strong>Planned sessions/events:</strong> ${plan?.weeks?.length || 0}</p>
         </div>
 
         <div class="weeks-preview">

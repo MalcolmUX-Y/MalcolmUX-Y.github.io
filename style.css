@@ -135,6 +135,10 @@ h1 {
   margin-bottom: 18px;
 }
 
+.review-grid-single {
+  grid-template-columns: minmax(220px, 1fr);
+}
+
 label {
   display: flex;
   flex-direction: column;
@@ -254,6 +258,18 @@ textarea {
   background: rgba(255, 255, 255, 0.02);
 }
 
+.pdf-preview {
+  margin-top: 14px;
+}
+
+.pdf-preview iframe {
+  width: 100%;
+  min-height: 360px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: white;
+}
+
 .week-row {
   display: block;
   padding: 12px 0;
@@ -301,6 +317,60 @@ textarea {
 
 .week-row:last-child {
   border-bottom: none;
+}
+
+.session-card-list {
+  display: grid;
+  gap: 14px;
+}
+
+.session-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 14px;
+}
+
+.session-card-title-row {
+  margin-bottom: 12px;
+}
+
+.session-kind-chip {
+  display: inline-flex;
+  margin: 0 0 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: #b9ccf4;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.session-card h4 {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.25;
+}
+
+.review-grid-session {
+  margin-bottom: 10px;
+}
+
+.source-text-toggle summary {
+  cursor: pointer;
+  font-size: 14px;
+  color: #b9ccf4;
+}
+
+.source-text-toggle pre {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 10px;
+  white-space: pre-wrap;
+  line-height: 1.45;
 }
 
 .muted {
