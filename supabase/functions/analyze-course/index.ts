@@ -275,18 +275,6 @@ function localParseSegment(segment: string): CourseItem[] {
   ];
 }
 
-  return [
-    {
-      type: "session",
-      date,
-      topic: firstLine,
-      readings: [],
-      assignment: "",
-      notes: content,
-    },
-  ];
-}
-
 function extractTextOutput(data: any): string {
   // OpenAI ChatCompletion response format
   if (data?.choices && Array.isArray(data.choices) && data.choices.length > 0) {
