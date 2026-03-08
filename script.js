@@ -551,6 +551,8 @@ async function runDocumentAnalysis() {
     console.log("ANALYSIS RESULT:", analysisResult);
     console.log("RAW ITEMS:", items);
     console.log("UI MODEL:", uiModel);
+    window.debugItems = items;
+window.debugUI = uiModel;
 
     state.segmentCount =
       typeof analysisResult?.segmentCount === "number"
