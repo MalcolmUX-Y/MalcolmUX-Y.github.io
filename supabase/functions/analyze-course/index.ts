@@ -239,20 +239,23 @@ function looksLikeEventLine(line: string): boolean {
 }
 
 function localParseSegment(segment: string): CourseItem[] {
-  const lines = segment.split("\n").map((l) => l.trim()).filter(Boolean);
+  // Keep blank lines for conservative section continuation logic
+  const rawLines = segment.split("\n").map((l) => l.trim());
+  const lines = rawLines.filter(Boolean);
 
   if (!lines.length) return [];
 
+  // Keep existing week-line/header fix: ignore week lines like "Uge 12" for header/content
   const nonWeekLines = lines.filter((line) => !isWeekLine(line));
-
   if (!nonWeekLines.length) return [];
 
   const headerLine = nonWeekLines[0];
   const dateSourceLine = lines.find((line) => isDateLine(line)) ?? headerLine;
   const date = extractDateFromLine(dateSourceLine) ?? "";
-  const content = nonWeekLines.slice(1).join(" ");
 
+  // Preserve prior classification behavior: do not change looksLikeEventLine(...) input
   if (looksLikeEventLine(segment)) {
+    const content = nonWeekLines.slice(1).join(" ");
     return [
       {
         type: "event",
@@ -263,18 +266,101 @@ function localParseSegment(segment: string): CourseItem[] {
     ];
   }
 
+  // v1.2.1: structure session content into readings/assignment/notes (conservative)
+  const rawNonWeekLines = rawLines.filter((line) => !isWeekLine(line));
+  const firstContentIdx = rawNonWeekLines.findIndex(
+    (l) => l.length > 0 && l === headerLine,
+  );
+  const contentLines =
+    firstContentIdx >= 0 ? rawNonWeekLines.slice(firstContentIdx + 1) : [];
+
+  const readingsLabelRe =
+    /^(?:pensum|litteratur|reading|readings|tekst)\b\s*[:\-–]?\s*(.*)$/i;
+  const assignmentLabelRe =
+    /^(?:opgave|assignment|forbered|prepare)\b\s*[:\-–]?\s*(.*)$/i;
+
+  const isBulletish = (s: string) => /^(?:[-*•‣∙]\s+|\d+\.\s+)/.test(s);
+  const stripBullet = (s: string) =>
+    s.replace(/^(?:[-*•‣∙]\s+|\d+\.\s+)/, "").trim();
+
+  const looksLikeOtherHeading = (s: string) =>
+    /^[^:]{2,40}:\s*\S+/.test(s) && !readingsLabelRe.test(s) && !assignmentLabelRe.test(s);
+
+  type Section = "readings" | "assignment" | "notes";
+  let section: Section = "notes";
+  let justEnteredLabeledSection = false;
+
+  const readings: string[] = [];
+  const assignmentParts: string[] = [];
+  const notesParts: string[] = [];
+
+  for (const rawLine of contentLines) {
+    const line = rawLine.trim();
+
+    // Blank line breaks continuation (prevents "sticky" swallowing)
+    if (!line) {
+      section = "notes";
+      justEnteredLabeledSection = false;
+      continue;
+    }
+
+    const readingsMatch = line.match(readingsLabelRe);
+    if (readingsMatch) {
+      section = "readings";
+      justEnteredLabeledSection = true;
+      const remainder = stripBullet((readingsMatch[1] ?? "").trim());
+      if (remainder) readings.push(remainder);
+      continue;
+    }
+
+    const assignmentMatch = line.match(assignmentLabelRe);
+    if (assignmentMatch) {
+      section = "assignment";
+      justEnteredLabeledSection = true;
+      const remainder = stripBullet((assignmentMatch[1] ?? "").trim());
+      if (remainder) assignmentParts.push(remainder);
+      continue;
+    }
+
+    const cleaned = stripBullet(line);
+    if (!cleaned) continue;
+
+    // Conservative continuation:
+    // - accept bullet/list lines in the current labeled section
+    // - accept a single immediate continuation line after a label (even if not bulleted)
+    // - otherwise, fall back to notes and stop the labeled section
+    const canContinueInSection =
+      isBulletish(line) || (justEnteredLabeledSection && !looksLikeOtherHeading(cleaned));
+
+    if (section === "readings" && canContinueInSection) {
+      readings.push(cleaned);
+      justEnteredLabeledSection = false;
+      continue;
+    }
+
+    if (section === "assignment" && canContinueInSection) {
+      assignmentParts.push(cleaned);
+      justEnteredLabeledSection = false;
+      continue;
+    }
+
+    // Anything else is notes, and breaks out of labeled sections
+    section = "notes";
+    justEnteredLabeledSection = false;
+    notesParts.push(cleaned);
+  }
+
   return [
     {
       type: "session",
       date,
       topic: headerLine,
-      readings: [],
-      assignment: "",
-      notes: content,
+      readings,
+      assignment: assignmentParts.join(" ").trim(),
+      notes: notesParts.join(" ").trim(),
     },
   ];
 }
-
 function extractTextOutput(data: any): string {
   // OpenAI ChatCompletion response format
   if (data?.choices && Array.isArray(data.choices) && data.choices.length > 0) {
