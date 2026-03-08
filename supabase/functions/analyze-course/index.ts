@@ -262,7 +262,8 @@ function localParseSegment(segment: string): CourseItem[] {
         date,
         title: headerLine,
         notes: content,
-      },
+        sourceText: segment,
+      } as any,
     ];
   }
 
@@ -271,29 +272,179 @@ function localParseSegment(segment: string): CourseItem[] {
   const firstContentIdx = rawNonWeekLines.findIndex(
     (l) => l.length > 0 && l === headerLine,
   );
-  const contentLines =
+  const parsedContentLines =
     firstContentIdx >= 0 ? rawNonWeekLines.slice(firstContentIdx + 1) : [];
 
-  const readingsLabelRe =
-    /^(?:pensum|litteratur|reading|readings|tekst)\b\s*[:\-–]?\s*(.*)$/i;
+  const hasMeaningfulContentLines = parsedContentLines.some(
+    (l) => l.trim().length > 0,
+  );
+  const parseHeaderAsContent = !hasMeaningfulContentLines;
 
-  // More conservative inline support:
-  // Only treat as a section marker if the label is immediately followed by ":" / "-" / "–"
-  // (optionally with spaces), e.g. "Litteratur:" or "Pensum – ..."
-  const readingsInlineLabelRe =
-    /^(.*?)(?:\b(?:pensum|litteratur|reading|readings|tekst)\b)\s*(?::|[-–])\s*(.*)$/i;
-
-  const assignmentLabelRe =
-    /^(?:opgave|assignment|forbered|prepare)\b\s*[:\-–]?\s*(.*)$/i;
-
-  const isBulletish = (s: string) => /^(?:[-*•‣∙]\s+|\d+\.\s+)/.test(s);
   const stripBullet = (s: string) =>
     s.replace(/^(?:[-*•‣∙]\s+|\d+\.\s+)/, "").trim();
+
+  const pushReadings = (target: string[], text: string) => {
+    const cleaned = stripBullet(text).trim();
+    if (!cleaned) return;
+    for (const item of cleaned.split(/[•]/g)) {
+      const v = item.trim();
+      if (v) target.push(v);
+    }
+  };
+
+  /* ---------------- AU COMPACT SINGLE-LINE PATH ---------------- */
+  // Many AU session lines are a single line: "Mandag d. 9. februar: Topic • Reading • ... • Genstand: ... OBS"
+  // Only apply when there are no separate content lines (so multi-line behavior stays unchanged).
+  if (parseHeaderAsContent) {
+    const hasAuBullets = /[•]/.test(headerLine);
+
+    // Remove the *leading date* from the original header line (not via replacing the abbreviated extracted `date`)
+    const leadingDateRe =
+      /^\s*(?:(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\s+)?(?:d\.|den)?\s*\d{1,2}\.?\s*(?:jan(?:uar)?|feb(?:ruar)?|mar(?:ts)?|apr(?:il)?|maj|jun(?:i)?|jul(?:i)?|aug(?:ust)?|sep(?:tember)?|okt(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\s*:?\s*/i;
+
+    if (hasAuBullets && leadingDateRe.test(headerLine)) {
+      const afterDate = headerLine.replace(leadingDateRe, "").trim();
+
+      const parts = afterDate
+        .split(/[•]/g)
+        .map((p) => stripBullet(p).trim())
+        .filter(Boolean);
+
+      let topic = parts[0] ?? afterDate;
+      topic = topic.replace(/^\s*[:\-–,]+\s*/, "").trim();
+
+      const readings: string[] = [];
+      const assignmentParts: string[] = [];
+      const notesParts: string[] = [];
+
+      const tailMarkerRe = /\b(?:genstande?|supplerende|obs)\b\s*(?::|,|[-–])?/i;
+
+      // v1.2.2: improved tail-note classification for compact AU lines.
+      const isTailNoteItem = (s: string) => {
+        const t = s.trim();
+        if (!t) return false;
+
+        const startsWithTailMarker = new RegExp(
+          `^(?:genstande?|supplerende|obs)\\b\\s*(?::|,|[-–])?`,
+          "i",
+        ).test(t);
+
+        const startsWithOtherNoteish =
+          /^(?:note\b|lokale\b|rum\b|sted\b|zoom\b|teams\b|link\b|kl\.|tid\b)\b/i.test(
+            t,
+          );
+
+        const containsObsAnywhere = /\bobs\b/i.test(t);
+
+        return startsWithTailMarker || startsWithOtherNoteish || containsObsAnywhere;
+      };
+
+      const assignmentMarkerRe =
+        /^(?:opgave|assignment|forbered|prepare)\b\s*(?::|,|[-–])\s*(.*)$/i;
+
+      const splitOnTailMarker = (value: string): {
+        found: boolean;
+        readingPart: string;
+        notePart: string;
+        markerIndex: number;
+      } => {
+        const m = tailMarkerRe.exec(value);
+        if (!m || typeof m.index !== "number") {
+          return { found: false, readingPart: "", notePart: "", markerIndex: -1 };
+        }
+        const idx = m.index;
+        return {
+          found: true,
+          markerIndex: idx,
+          readingPart: value.slice(0, idx).trim(),
+          notePart: value.slice(idx).trim(),
+        };
+      };
+
+      let inNotes = false;
+      for (const p of parts.slice(1)) {
+        const assignmentMatch = p.match(assignmentMarkerRe);
+        if (assignmentMatch) {
+          const remainder = (assignmentMatch[1] ?? "").trim();
+          if (remainder) assignmentParts.push(stripBullet(remainder));
+          continue;
+        }
+
+        if (inNotes) {
+          notesParts.push(p);
+          continue;
+        }
+
+        // NEW: mid-item split when a tail marker occurs inside the bullet item.
+        const midSplit = splitOnTailMarker(p);
+        if (midSplit.found) {
+          // If marker is at the beginning, treat whole item as notes.
+          if (!midSplit.readingPart || midSplit.markerIndex === 0 || isTailNoteItem(p)) {
+            inNotes = true;
+            notesParts.push(p);
+            continue;
+          }
+
+          // Otherwise: reading part before marker, notes from marker onward.
+          pushReadings(readings, midSplit.readingPart);
+          inNotes = true;
+          notesParts.push(midSplit.notePart);
+          continue;
+        }
+
+        // Existing tail routing (start-of-item markers etc.)
+        if (isTailNoteItem(p)) {
+          inNotes = true;
+          notesParts.push(p);
+          continue;
+        }
+
+        pushReadings(readings, p);
+      }
+
+      return [
+        {
+          type: "session",
+          date,
+          topic,
+          readings,
+          assignment: assignmentParts.join(" ").trim(),
+          notes: notesParts.join(" ").trim(),
+          sourceText: segment,
+        } as any,
+      ];
+    }
+  }
+
+  /* ---------------- EXISTING MULTI-LINE / LABEL-BASED PATH ---------------- */
+
+  const contentLines = parseHeaderAsContent ? [headerLine] : parsedContentLines;
+
+  const readingsLabelRe =
+    /^(?:pensum|litteratur|reading|readings|tekst)\b\s*(?::|,|[-–])?\s*(.*)$/i;
+
+  // Conservative inline support (requires a delimiter after the keyword)
+  const readingsInlineLabelRe =
+    /^(.*?)(?:\b(?:pensum|litteratur|reading|readings|tekst)\b)\s*(?::|,|[-–])\s*(.*)$/i;
+
+  const assignmentLabelRe =
+    /^(?:opgave|assignment|forbered|prepare)\b\s*(?::|,|[-–])?\s*(.*)$/i;
+
+  const isBulletish = (s: string) => /^(?:[-*•‣∙]\s+|\d+\.\s+)/.test(s);
 
   const looksLikeOtherHeading = (s: string) =>
     /^[^:]{2,40}:\s*\S+/.test(s) &&
     !readingsLabelRe.test(s) &&
     !assignmentLabelRe.test(s);
+
+  // Topic defaults to headerLine; for compact-fallback (no AU bullets matched), clean by removing leading date safely
+  let topic = headerLine;
+  if (parseHeaderAsContent) {
+    const leadingDateReFallback =
+      /^\s*(?:(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\s+)?(?:d\.|den)?\s*\d{1,2}\.?\s*(?:jan(?:uar)?|feb(?:ruar)?|mar(?:ts)?|apr(?:il)?|maj|jun(?:i)?|jul(?:i)?|aug(?:ust)?|sep(?:tember)?|okt(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\s*:?\s*/i;
+    const stripped = headerLine.replace(leadingDateReFallback, "").trim();
+    if (stripped) topic = stripped;
+  }
 
   type Section = "readings" | "assignment" | "notes";
   let section: Section = "notes";
@@ -306,7 +457,6 @@ function localParseSegment(segment: string): CourseItem[] {
   for (const rawLine of contentLines) {
     const line = rawLine.trim();
 
-    // Blank line breaks continuation (prevents "sticky" swallowing)
     if (!line) {
       section = "notes";
       justEnteredLabeledSection = false;
@@ -317,22 +467,26 @@ function localParseSegment(segment: string): CourseItem[] {
     if (readingsMatch) {
       section = "readings";
       justEnteredLabeledSection = true;
-      const remainder = stripBullet((readingsMatch[1] ?? "").trim());
-      if (remainder) readings.push(remainder);
+      pushReadings(readings, (readingsMatch[1] ?? "").trim());
       continue;
     }
 
-    // Inline readings marker, but only when it looks like an actual label (":", "-", "–")
     const readingsInlineMatch = line.match(readingsInlineLabelRe);
     if (readingsInlineMatch) {
       const prefix = stripBullet((readingsInlineMatch[1] ?? "").trim());
-      const remainder = stripBullet((readingsInlineMatch[2] ?? "").trim());
+      const remainder = (readingsInlineMatch[2] ?? "").trim();
 
-      if (prefix) notesParts.push(prefix);
+      if (prefix) {
+        if (parseHeaderAsContent) {
+          topic = prefix;
+        } else {
+          notesParts.push(prefix);
+        }
+      }
 
       section = "readings";
       justEnteredLabeledSection = true;
-      if (remainder) readings.push(remainder);
+      pushReadings(readings, remainder);
       continue;
     }
 
@@ -348,16 +502,12 @@ function localParseSegment(segment: string): CourseItem[] {
     const cleaned = stripBullet(line);
     if (!cleaned) continue;
 
-    // Conservative continuation:
-    // - accept bullet/list lines in the current labeled section
-    // - accept a single immediate continuation line after a label (even if not bulleted)
-    // - otherwise, fall back to notes and stop the labeled section
     const canContinueInSection =
       isBulletish(line) ||
       (justEnteredLabeledSection && !looksLikeOtherHeading(cleaned));
 
     if (section === "readings" && canContinueInSection) {
-      readings.push(cleaned);
+      pushReadings(readings, cleaned);
       justEnteredLabeledSection = false;
       continue;
     }
@@ -368,7 +518,13 @@ function localParseSegment(segment: string): CourseItem[] {
       continue;
     }
 
-    // Anything else is notes, and breaks out of labeled sections
+    if (parseHeaderAsContent) {
+      topic = cleaned;
+      section = "notes";
+      justEnteredLabeledSection = false;
+      continue;
+    }
+
     section = "notes";
     justEnteredLabeledSection = false;
     notesParts.push(cleaned);
@@ -378,11 +534,12 @@ function localParseSegment(segment: string): CourseItem[] {
     {
       type: "session",
       date,
-      topic: headerLine,
+      topic,
       readings,
       assignment: assignmentParts.join(" ").trim(),
       notes: notesParts.join(" ").trim(),
-    },
+      sourceText: segment,
+    } as any,
   ];
 }
 
