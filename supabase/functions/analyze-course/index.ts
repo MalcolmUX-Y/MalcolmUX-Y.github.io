@@ -276,6 +276,13 @@ function localParseSegment(segment: string): CourseItem[] {
 
   const readingsLabelRe =
     /^(?:pensum|litteratur|reading|readings|tekst)\b\s*[:\-–]?\s*(.*)$/i;
+
+  // More conservative inline support:
+  // Only treat as a section marker if the label is immediately followed by ":" / "-" / "–"
+  // (optionally with spaces), e.g. "Litteratur:" or "Pensum – ..."
+  const readingsInlineLabelRe =
+    /^(.*?)(?:\b(?:pensum|litteratur|reading|readings|tekst)\b)\s*(?::|[-–])\s*(.*)$/i;
+
   const assignmentLabelRe =
     /^(?:opgave|assignment|forbered|prepare)\b\s*[:\-–]?\s*(.*)$/i;
 
@@ -284,7 +291,9 @@ function localParseSegment(segment: string): CourseItem[] {
     s.replace(/^(?:[-*•‣∙]\s+|\d+\.\s+)/, "").trim();
 
   const looksLikeOtherHeading = (s: string) =>
-    /^[^:]{2,40}:\s*\S+/.test(s) && !readingsLabelRe.test(s) && !assignmentLabelRe.test(s);
+    /^[^:]{2,40}:\s*\S+/.test(s) &&
+    !readingsLabelRe.test(s) &&
+    !assignmentLabelRe.test(s);
 
   type Section = "readings" | "assignment" | "notes";
   let section: Section = "notes";
@@ -313,6 +322,20 @@ function localParseSegment(segment: string): CourseItem[] {
       continue;
     }
 
+    // Inline readings marker, but only when it looks like an actual label (":", "-", "–")
+    const readingsInlineMatch = line.match(readingsInlineLabelRe);
+    if (readingsInlineMatch) {
+      const prefix = stripBullet((readingsInlineMatch[1] ?? "").trim());
+      const remainder = stripBullet((readingsInlineMatch[2] ?? "").trim());
+
+      if (prefix) notesParts.push(prefix);
+
+      section = "readings";
+      justEnteredLabeledSection = true;
+      if (remainder) readings.push(remainder);
+      continue;
+    }
+
     const assignmentMatch = line.match(assignmentLabelRe);
     if (assignmentMatch) {
       section = "assignment";
@@ -330,7 +353,8 @@ function localParseSegment(segment: string): CourseItem[] {
     // - accept a single immediate continuation line after a label (even if not bulleted)
     // - otherwise, fall back to notes and stop the labeled section
     const canContinueInSection =
-      isBulletish(line) || (justEnteredLabeledSection && !looksLikeOtherHeading(cleaned));
+      isBulletish(line) ||
+      (justEnteredLabeledSection && !looksLikeOtherHeading(cleaned));
 
     if (section === "readings" && canContinueInSection) {
       readings.push(cleaned);
@@ -361,6 +385,7 @@ function localParseSegment(segment: string): CourseItem[] {
     },
   ];
 }
+
 function extractTextOutput(data: any): string {
   // OpenAI ChatCompletion response format
   if (data?.choices && Array.isArray(data.choices) && data.choices.length > 0) {
