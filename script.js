@@ -548,6 +548,10 @@ async function runDocumentAnalysis() {
     const items = Array.isArray(analysisResult?.items) ? analysisResult.items : [];
     const uiModel = mapItemsToUiModel(items);
 
+    console.log("ANALYSIS RESULT:", analysisResult);
+    console.log("RAW ITEMS:", items);
+    console.log("UI MODEL:", uiModel);
+
     state.segmentCount =
       typeof analysisResult?.segmentCount === "number"
         ? analysisResult.segmentCount
