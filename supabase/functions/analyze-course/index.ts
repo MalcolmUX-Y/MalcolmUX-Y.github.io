@@ -28,208 +28,42 @@ type EventItem = {
   type: "event";
   date: string;
   title: string;
-  notes: string;
+  details: string;
+  sourceText: string;
 };
 
 type CourseItem = CourseInfoItem | SessionItem | EventItem;
-type SegmentType = "course_info" | "session" | "event" | "ignore";
 
-type PipelineTelemetry = {
-  ignoredSegments: number;
-  extractorPathCounts: {
-    courseInfoHeuristic: number;
-    eventHeuristic: number;
-    sessionHeuristic: number;
-    courseInfoClassifier: number;
-    eventClassifier: number;
-    sessionClassifier: number;
-    fallbackLocal: number;
-    classifierIgnored: number;
-  };
-  segmentItemYield: {
-    totalSegments: number;
-    nonEmptySegments: number;
-    emptySegments: number;
-    totalItems: number;
-  };
+type SegmentTelemetry = {
+  totalSegments: number;
+  extractedSegments: number;
+  localParsedSegments: number;
+  yieldedItems: number;
 };
 
-function createPipelineTelemetry(): PipelineTelemetry {
-  return {
-    ignoredSegments: 0,
-    extractorPathCounts: {
-      courseInfoHeuristic: 0,
-      eventHeuristic: 0,
-      sessionHeuristic: 0,
-      courseInfoClassifier: 0,
-      eventClassifier: 0,
-      sessionClassifier: 0,
-      fallbackLocal: 0,
-      classifierIgnored: 0,
-    },
-    segmentItemYield: {
-      totalSegments: 0,
-      nonEmptySegments: 0,
-      emptySegments: 0,
-      totalItems: 0,
-    },
-  };
-}
+type AnalyzeResponse = {
+  segmentCount: number;
+  items: CourseItem[];
+};
 
-function recordSegmentYield(
-  telemetry: PipelineTelemetry,
-  items: CourseItem[],
-): CourseItem[] {
-  telemetry.segmentItemYield.totalSegments += 1;
-  telemetry.segmentItemYield.totalItems += items.length;
-
-  if (items.length > 0) {
-    telemetry.segmentItemYield.nonEmptySegments += 1;
-  } else {
-    telemetry.segmentItemYield.emptySegments += 1;
-  }
-
-  return items;
-}
-
-function normalizeWhitespace(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
-}
-
-function preprocessText(text: string): string {
-  // Insert newlines before Danish date patterns so they become separate lines
-  // E.g., "...content Mandag d. 4. februar: next topic..." → "...content\nMandag d. 4. februar: next topic..."
-  return text.replace(
-    /([^\n])\s+((?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\s+(?:d\.|den)?\s*\d{1,2}\s*\.?\s*(?:jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec))/gi,
-    "$1\n$2"
-  );
-}
-
-function normalizeLines(text: string): string[] {
-  const preprocessed = preprocessText(text);
-  return preprocessed
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .split("\n")
-    .map((line) => normalizeWhitespace(line))
-    .filter(Boolean);
+function normalizeWhitespace(input: string): string {
+  return input.replace(/\s+/g, " ").trim();
 }
 
 function isWeekLine(line: string): boolean {
-  return /^(?:uge|week)\s+\d+\b/i.test(line);
+  return /^uge\s*\d+/i.test(line.trim());
 }
 
 function isDateLine(line: string): boolean {
-  // Matches: "Mandag d. 4. februar", "Onsdag d. 11. februar", "Torsdag d. 9. april", etc.
-  const danishDatePattern = /^(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\b\s+(?:d\.|den)?\s+\d{1,2}\s*\.?\s*(?:jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)/i;
-  
-  if (danishDatePattern.test(line)) {
-    return true;
-  }
-
-  // Fallback to original pattern for other formats
-  const weekdayMonthPattern =
-    /^(?:(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\b[\s,:-]*)?(?:\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?|\d{1,2}\.?\s*(?:jan(?:uar)?|feb(?:ruar)?|mar(?:ts)?|apr(?:il)?|maj|jun(?:i)?|jul(?:i)?|aug(?:ust)?|sep(?:tember)?|okt(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b)/i;
-
-  return weekdayMonthPattern.test(line);
+  return (
+    /(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)/i.test(line) &&
+    /(?:d\.|den)?\s*\d{1,2}/i.test(line)
+  );
 }
-
-function isEventHeaderLine(line: string): boolean {
-  return /^(obs\b|deadline\b|seminar\b|workshop\b|påskeferie\b|ferie\b|feedback\b|vejledning\b|afslutning\b|talefest\b|skriveøvelse\b)/i
-    .test(line);
-}
-
-function isCourseMetaHeaderLine(line: string): boolean {
-  return /^(underviser|undervisning|litteratur|litteraturforkortelser|forkortelser|kursusbeskrivelse|eksamen|brightspace|lokale|kursusmetadata|kontakt|materiale|læseplan|curriculum)\b/i
-    .test(line);
-}
-
-function segmentText(text: string): string[] {
-  const lines = normalizeLines(text);
-
-  if (lines.length === 0) {
-    return [];
-  }
-
-  const segments: string[] = [];
-  let currentSegment: string[] = [];
-  let activeWeekLine = "";
-  let hasSeenTimelineAnchor = false;
-
-  const pushCurrentSegment = () => {
-    const segment = currentSegment
-      .map((line) => normalizeWhitespace(line))
-      .filter(Boolean)
-      .join("\n");
-
-    if (segment) {
-      segments.push(segment);
-    }
-
-    currentSegment = [];
-  };
-
-  for (const line of lines) {
-    if (isWeekLine(line)) {
-      if (currentSegment.length > 0) {
-        pushCurrentSegment();
-      }
-
-      activeWeekLine = line;
-      hasSeenTimelineAnchor = true;
-      continue;
-    }
-
-    const startsOwnSegment = isDateLine(line) || isEventHeaderLine(line) ||
-      isCourseMetaHeaderLine(line);
-
-    if (startsOwnSegment) {
-      if (currentSegment.length > 0) {
-        pushCurrentSegment();
-      }
-
-      if (activeWeekLine && !isCourseMetaHeaderLine(line)) {
-        currentSegment.push(activeWeekLine);
-      }
-
-      currentSegment.push(line);
-
-      if (isDateLine(line) || isEventHeaderLine(line)) {
-        hasSeenTimelineAnchor = true;
-      }
-
-      continue;
-    }
-
-    if (currentSegment.length === 0 && activeWeekLine && hasSeenTimelineAnchor) {
-      currentSegment.push(activeWeekLine);
-    }
-
-    currentSegment.push(line);
-  }
-
-  if (currentSegment.length > 0) {
-    pushCurrentSegment();
-  }
-
-  return segments.filter(Boolean);
-}
-
-/* ---------------- LOCAL FALLBACK PARSER ---------------- */
 
 function extractDateFromLine(line: string): string | null {
-  // Try Danish format first: "Mandag d. 4. februar"
-  const danishMatch = line.match(
-    /(mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)?\s*(?:d\.|den)?\s*(\d{1,2})\s*\.?\s*(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)/i,
-  );
-
-  if (danishMatch) {
-    return danishMatch[0];
-  }
-
-  // Fallback to other formats
   const match = line.match(
-    /(mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)?\s*d?\.\s*\d{1,2}\.?\s*(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec|januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december)/i,
+    /(?:(mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)?\s*d?\.\s*\d{1,2}\.?\s*(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec|januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december))/i,
   );
 
   return match ? match[0] : null;
@@ -239,255 +73,395 @@ function looksLikeEventLine(line: string): boolean {
   return /deadline|seminar|ferie|feedback|vejledning|afslutning/i.test(line);
 }
 
+function looksLikeCourseInfo(segment: string): boolean {
+  return /(?:undviser|undervisning|litteratur|forkortelser|kursusbeskrivelse|læseplan|materiale|kontakt|om kurset)/i
+    .test(segment);
+}
+
+function isDateTimeOnlySegment(segment: string): boolean {
+  const lines = segment
+    .split("\n")
+    .map((l) => normalizeWhitespace(l))
+    .filter(Boolean)
+    .filter((l) => !isWeekLine(l));
+
+  if (!lines.length) return true;
+
+  const timeRe =
+    /\b(?:kl\.?\s*)?\d{1,2}(?:[:.]\d{2})\b(?:\s*[-–]\s*(?:kl\.?\s*)?\d{1,2}(?:[:.]\d{2})\b)?/i;
+
+  return lines.every((l) => {
+    const compact = normalizeWhitespace(l);
+    if (isDateLine(compact)) {
+  const afterDate = compact.replace(
+    /^\s*(?:(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\s+)?(?:(?:d\.|den)\s*)?\d{1,2}\.?(?:\s*(?:jan(?:uar)?|feb(?:ruar)?|mar(?:ts)?|apr(?:il)?|maj|jun(?:i)?|jul(?:i)?|aug(?:ust)?|sep(?:tember)?|okt(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b)?\s*/i,
+    "",
+  );
+
+  const rest = afterDate.replace(timeRe, "").trim();
+  if (!rest || rest.length <= 2 || /^[\-–—:.,()\s]+$/.test(rest)) return true;
+  return false;
+}
+    if (timeRe.test(compact) && compact.replace(timeRe, "").trim().length <= 2) {
+      return true;
+    }
+    return /^[\-–—:.,()\s]+$/.test(compact);
+  });
+}
+
+function hasMeaningfulSessionSignal(segment: string): boolean {
+  const compact = normalizeWhitespace(segment);
+
+  if (!compact) return false;
+  if (isDateTimeOnlySegment(segment)) return false;
+
+  const hasReadings =
+    /\b(?:pensum|litteratur|læsestof|reading|readings|tekst)\b/i.test(compact);
+
+  const hasAssignment =
+    /\b(?:opgave|assignment|forbered|prepare|genstande?)\b/i.test(compact);
+
+  const hasNotesLabel =
+    /\b(?:obs|supplerende)\b\s*(?::|,|[-–])?/i.test(compact);
+
+  const hasTeachingHeader =
+    /\b(?:forelæsning|undervisning|øvelse|øvelser|hold(?:time)?|workshop|case(?:-arbejde)?|diskussion|tema|emne)\b/i
+      .test(compact);
+
+  const afterLeadingDate = compact.replace(
+  /^\s*(?:(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\s+)?(?:(?:d\.|den)\s*)?\d{1,2}\.?(?:\s*(?:jan(?:uar)?|feb(?:ruar)?|mar(?:ts)?|apr(?:il)?|maj|jun(?:i)?|jul(?:i)?|aug(?:ust)?|sep(?:tember)?|okt(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b)?\s*:?-?\s*/i,
+  "",
+).trim();
+
+  const hasTopicAfterDate =
+    afterLeadingDate.length >= 6 && /[A-Za-zÆØÅæøå]/.test(afterLeadingDate);
+
+  return (
+    hasTopicAfterDate || hasReadings || hasAssignment || hasNotesLabel ||
+    hasTeachingHeader
+  );
+}
+
+function looksLikeSession(segment: string): boolean {
+  const hasDanishDate =
+    /mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag.*(?:d\.|den)?\s*\d{1,2}/i
+      .test(segment);
+
+  const hasLegacySessionContent =
+    /læsestof|readings?:|genstand:|genstande:|supplerende:|øvelser|session|tema|emne|diskussion|case-arbejde|vejledning/i
+      .test(segment);
+
+  if (!hasDanishDate && looksLikeCourseInfo(segment)) return false;
+  if (isDateTimeOnlySegment(segment)) return false;
+
+  const hasMeaningfulSignal =
+    hasLegacySessionContent || hasMeaningfulSessionSignal(segment);
+
+  return (hasDanishDate && hasMeaningfulSignal) ||
+    (!hasDanishDate && hasMeaningfulSessionSignal(segment));
+}
+
+function looksLikeEvent(segment: string): boolean {
+  if (hasMeaningfulSessionSignal(segment) || looksLikeSession(segment)) return false;
+
+  return /\b(?:obs|deadline|seminar|workshop|påskeferie|ferie|feedback|vejledning|afslutning|talefest|skriveøvelse|midtvejsevaluering|individuel vejledning|gruppearbejde)\b/i
+    .test(segment);
+}
+
 function localParseSegment(segment: string): CourseItem[] {
-  // Keep blank lines for conservative section continuation logic
+  const stripBullet = (s: string) =>
+    s.replace(/^(?:[-*•‣∙]\s+|\d+\.\s+)/, "").trim();
+
+  const pushReadings = (arr: string[], s: string) => {
+    const cleaned = stripBullet(s);
+    if (!cleaned) return;
+    arr.push(cleaned);
+  };
+
   const rawLines = segment.split("\n").map((l) => l.trim());
   const lines = rawLines.filter(Boolean);
 
   if (!lines.length) return [];
 
-  // Keep existing week-line/header fix: ignore week lines like "Uge 12" for header/content
   const nonWeekLines = lines.filter((line) => !isWeekLine(line));
   if (!nonWeekLines.length) return [];
+
+  if (isDateTimeOnlySegment(segment)) return [];
+
+  const hasAnyDate = lines.some((line) => isDateLine(line));
+  if (!hasAnyDate && looksLikeCourseInfo(segment)) {
+    return [
+      {
+        type: "course_info",
+        title: "",
+        teachers: [],
+        schedule: [],
+        notes: nonWeekLines.join(" ").trim(),
+      } as any,
+    ];
+  }
 
   const headerLine = nonWeekLines[0];
   const dateSourceLine = lines.find((line) => isDateLine(line)) ?? headerLine;
   const date = extractDateFromLine(dateSourceLine) ?? "";
 
-  // Preserve prior classification behavior: do not change looksLikeEventLine(...) input
-  if (looksLikeEventLine(segment)) {
-    const content = nonWeekLines.slice(1).join(" ");
+  const remainingLines = nonWeekLines.slice(1);
+  const bodyJoined = remainingLines.join("\n").trim();
+
+  const hasSessionMarkers =
+    /pensum|litteratur|readings?:|opgave|assignment|forbered|tema|emne|øvelse|genstand|supplerende|obs/i
+      .test(segment);
+
+  if (
+    !hasSessionMarkers && looksLikeEventLine(headerLine) &&
+    !hasMeaningfulSessionSignal(segment)
+  ) {
     return [
       {
         type: "event",
         date,
-        title: headerLine,
-        notes: content,
+        title: normalizeWhitespace(headerLine),
+        details: normalizeWhitespace(bodyJoined),
         sourceText: segment,
       } as any,
     ];
   }
 
-  // v1.2.1: structure session content into readings/assignment/notes (conservative)
-  const rawNonWeekLines = rawLines.filter((line) => !isWeekLine(line));
-  const firstContentIdx = rawNonWeekLines.findIndex(
-    (l) => l.length > 0 && l === headerLine,
+  const parseHeaderAsContent = !/[:\-–]/.test(headerLine) &&
+    !looksLikeEventLine(headerLine) &&
+    remainingLines.length > 0;
+
+  // ---------------- EXISTING "AU compact bullets" fallback ----------------
+  const auCompactMatch = segment.match(
+    /^(?<day>(mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag))\s+(?<rest>[\s\S]*)$/i,
   );
-  const parsedContentLines =
-    firstContentIdx >= 0 ? rawNonWeekLines.slice(firstContentIdx + 1) : [];
 
-  const hasMeaningfulContentLines = parsedContentLines.some(
-    (l) => l.trim().length > 0,
-  );
-  const parseHeaderAsContent = !hasMeaningfulContentLines;
+  if (auCompactMatch?.groups?.rest && parseHeaderAsContent) {
+    const extractedDate = extractDateFromLine(segment) ?? "";
+    const afterDate = extractedDate
+      ? normalizeWhitespace(segment.replace(extractedDate, "")).trim()
+      : normalizeWhitespace(auCompactMatch.groups.rest.trim());
 
-  const stripBullet = (s: string) =>
-    s.replace(/^(?:[-*•‣∙]\s+|\d+\.\s+)/, "").trim();
+    const parts = afterDate
+      .split(/,\s*/)
+      .map((p) => p.trim())
+      .filter(Boolean);
 
-  const pushReadings = (target: string[], text: string) => {
-    const cleaned = stripBullet(text).trim();
-    if (!cleaned) return;
-    for (const item of cleaned.split(/[•]/g)) {
-      const v = item.trim();
-      if (v) target.push(v);
-    }
-  };
+    let topic = parts[0] ?? afterDate;
+    topic = topic.replace(/^\s*[:\-–,]+\s*/, "").trim();
 
-  /* ---------------- AU COMPACT SINGLE-LINE PATH ---------------- */
-  // Many AU session lines are a single line: "Mandag d. 9. februar: Topic • Reading • ... • Genstand: ... OBS"
-  // Only apply when there are no separate content lines (so multi-line behavior stays unchanged).
-  if (parseHeaderAsContent) {
-    const hasAuBullets = /[•]/.test(headerLine);
+    const readings: string[] = [];
+    const assignmentParts: string[] = [];
+    const notesParts: string[] = [];
 
-    // Remove the *leading date* from the original header line (not via replacing the abbreviated extracted `date`)
-    const leadingDateRe =
-      /^\s*(?:(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\s+)?(?:d\.|den)?\s*\d{1,2}\.?\s*(?:jan(?:uar)?|feb(?:ruar)?|mar(?:ts)?|apr(?:il)?|maj|jun(?:i)?|jul(?:i)?|aug(?:ust)?|sep(?:tember)?|okt(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\s*:?\s*/i;
+    const genstandMarkerRe = /\b(?:genstande?)\b\s*(?::|,|[-–])?/i;
+    const tailMarkerRe = /\b(?:genstande?|supplerende|obs)\b\s*(?::|,|[-–])?/i;
 
-    if (hasAuBullets && leadingDateRe.test(headerLine)) {
-      const afterDate = headerLine.replace(leadingDateRe, "").trim();
+    const isTailNotesItem = (s: string) => {
+      const t = s.trim();
+      if (!t) return false;
 
-      const parts = afterDate
-        .split(/[•]/g)
-        .map((p) => stripBullet(p).trim())
-        .filter(Boolean);
+      const startsWithNotesMarker = new RegExp(
+        `^(?:supplerende|obs)\\b\\s*(?::|,|[-–])?`,
+        "i",
+      ).test(t);
 
-      let topic = parts[0] ?? afterDate;
-      topic = topic.replace(/^\s*[:\-–,]+\s*/, "").trim();
+      const startsWithOtherNoteish =
+        /^(?:note\b|lokale\b|rum\b|sted\b|zoom\b|teams\b|link\b|kl\.|tid\b)\b/i
+          .test(t);
 
-      const readings: string[] = [];
-      const assignmentParts: string[] = [];
-      const notesParts: string[] = [];
+      const containsObsAnywhere = /\bobs\b/i.test(t);
 
-      const tailMarkerRe = /\b(?:genstande?|supplerende|obs)\b\s*(?::|,|[-–])?/i;
+      return startsWithNotesMarker || startsWithOtherNoteish || containsObsAnywhere;
+    };
 
-      // v1.2.2: improved tail-note classification for compact AU lines.
-      const isTailNoteItem = (s: string) => {
-        const t = s.trim();
-        if (!t) return false;
+    const assignmentMarkerRe =
+      /^(?:opgave|assignment|forbered|prepare)\b\s*(?::|,|[-–])\s*(.*)$/i;
 
-        const startsWithTailMarker = new RegExp(
-          `^(?:genstande?|supplerende|obs)\\b\\s*(?::|,|[-–])?`,
-          "i",
-        ).test(t);
-
-        const startsWithOtherNoteish =
-          /^(?:note\b|lokale\b|rum\b|sted\b|zoom\b|teams\b|link\b|kl\.|tid\b)\b/i.test(
-            t,
-          );
-
-        const containsObsAnywhere = /\bobs\b/i.test(t);
-
-        return startsWithTailMarker || startsWithOtherNoteish || containsObsAnywhere;
+    const splitOnTailMarker = (value: string): {
+      found: boolean;
+      readingPart: string;
+      notePart: string;
+      markerIndex: number;
+    } => {
+      const m = tailMarkerRe.exec(value);
+      if (!m || typeof m.index !== "number") {
+        return { found: false, readingPart: "", notePart: "", markerIndex: -1 };
+      }
+      const idx = m.index;
+      return {
+        found: true,
+        markerIndex: idx,
+        readingPart: value.slice(0, idx).trim(),
+        notePart: value.slice(idx).trim(),
       };
+    };
 
-      const assignmentMarkerRe =
-        /^(?:opgave|assignment|forbered|prepare)\b\s*(?::|,|[-–])\s*(.*)$/i;
+    const pushReadingsAu = (arr: string[], s: string) => {
+      const cleaned = stripBullet(s);
+      if (!cleaned) return;
+      if (assignmentMarkerRe.test(cleaned)) return;
+      if (looksLikeEventLine(cleaned)) return;
+      arr.push(cleaned);
+    };
 
-      const splitOnTailMarker = (value: string): {
-        found: boolean;
-        readingPart: string;
-        notePart: string;
-        markerIndex: number;
-      } => {
-        const m = tailMarkerRe.exec(value);
-        if (!m || typeof m.index !== "number") {
-          return { found: false, readingPart: "", notePart: "", markerIndex: -1 };
-        }
-        const idx = m.index;
-        return {
-          found: true,
-          markerIndex: idx,
-          readingPart: value.slice(0, idx).trim(),
-          notePart: value.slice(idx).trim(),
-        };
-      };
+    let inNotes = false;
+    for (const p of parts.slice(1)) {
+      const assignmentMatch = p.match(assignmentMarkerRe);
+      if (assignmentMatch) {
+        const remainder = (assignmentMatch[1] ?? "").trim();
+        if (remainder) assignmentParts.push(stripBullet(remainder));
+        continue;
+      }
 
-      let inNotes = false;
-      for (const p of parts.slice(1)) {
-        const assignmentMatch = p.match(assignmentMarkerRe);
-        if (assignmentMatch) {
-          const remainder = (assignmentMatch[1] ?? "").trim();
+      if (inNotes) {
+        notesParts.push(p);
+        continue;
+      }
+
+      const midSplit = splitOnTailMarker(p);
+      if (midSplit.found) {
+        const tail = midSplit.notePart;
+
+        if (genstandMarkerRe.test(tail)) {
+          if (midSplit.readingPart) {
+            pushReadingsAu(readings, midSplit.readingPart);
+          }
+          const remainder = tail
+            .replace(/^(?:genstande?)\b\s*(?::|,|[-–])?\s*/i, "")
+            .trim();
           if (remainder) assignmentParts.push(stripBullet(remainder));
           continue;
         }
 
-        if (inNotes) {
-          notesParts.push(p);
-          continue;
-        }
-
-        // NEW: mid-item split when a tail marker occurs inside the bullet item.
-        const midSplit = splitOnTailMarker(p);
-        if (midSplit.found) {
-          // If marker is at the beginning, treat whole item as notes.
-          if (!midSplit.readingPart || midSplit.markerIndex === 0 || isTailNoteItem(p)) {
-            inNotes = true;
-            notesParts.push(p);
-            continue;
-          }
-
-          // Otherwise: reading part before marker, notes from marker onward.
-          pushReadings(readings, midSplit.readingPart);
-          inNotes = true;
-          notesParts.push(midSplit.notePart);
-          continue;
-        }
-
-        // Existing tail routing (start-of-item markers etc.)
-        if (isTailNoteItem(p)) {
+        if (
+          !midSplit.readingPart ||
+          midSplit.markerIndex === 0 ||
+          isTailNotesItem(p)
+        ) {
           inNotes = true;
           notesParts.push(p);
           continue;
         }
 
-        pushReadings(readings, p);
+        pushReadingsAu(readings, midSplit.readingPart);
+        inNotes = true;
+        notesParts.push(tail);
+        continue;
       }
 
-      return [
-        {
-          type: "session",
-          date,
-          topic,
-          readings,
-          assignment: assignmentParts.join(" ").trim(),
-          notes: notesParts.join(" ").trim(),
-          sourceText: segment,
-        } as any,
-      ];
+      if (/^(?:genstande?)\b\s*(?::|,|[-–])?/i.test(p)) {
+        const remainder = p
+          .replace(/^(?:genstande?)\b\s*(?::|,|[-–])?\s*/i, "")
+          .trim();
+        if (remainder) assignmentParts.push(stripBullet(remainder));
+        continue;
+      }
+
+      if (isTailNotesItem(p)) {
+        inNotes = true;
+        notesParts.push(p);
+        continue;
+      }
+
+      pushReadingsAu(readings, p);
     }
+
+    const assignmentText = assignmentParts.join(" ").trim();
+    const notesText = notesParts.join(" ").trim();
+    const hasTopicSignal =
+      topic.trim().length >= 6 && /[A-Za-zÆØÅæøå]/.test(topic);
+
+    if (!hasTopicSignal && readings.length === 0 && !assignmentText && !notesText) {
+      return [];
+    }
+
+    return [
+      {
+        type: "session",
+        date: extractedDate || date,
+        topic,
+        readings,
+        assignment: assignmentText,
+        notes: notesText,
+        sourceText: segment,
+      } as any,
+    ];
   }
 
-  /* ---------------- EXISTING MULTI-LINE / LABEL-BASED PATH ---------------- */
-
-  const contentLines = parseHeaderAsContent ? [headerLine] : parsedContentLines;
+  /* ---------------- EXISTING MULTI-LINE FALLBACK PARSER ---------------- */
 
   const readingsLabelRe =
     /^(?:pensum|litteratur|reading|readings|tekst)\b\s*(?::|,|[-–])?\s*(.*)$/i;
 
-  // Conservative inline support (requires a delimiter after the keyword)
   const readingsInlineLabelRe =
     /^(.*?)(?:\b(?:pensum|litteratur|reading|readings|tekst)\b)\s*(?::|,|[-–])\s*(.*)$/i;
 
   const assignmentLabelRe =
     /^(?:opgave|assignment|forbered|prepare)\b\s*(?::|,|[-–])?\s*(.*)$/i;
 
+  const genstandLabelRe =
+    /^(?:genstande?)\b\s*(?::|,|[-–])?\s*(.*)$/i;
+
+  const notesLabelRe =
+    /^(?:obs|supplerende)\b\s*(?::|,|[-–])?\s*(.*)$/i;
+
   const isBulletish = (s: string) => /^(?:[-*•‣∙]\s+|\d+\.\s+)/.test(s);
 
   const looksLikeOtherHeading = (s: string) =>
     /^[^:]{2,40}:\s*\S+/.test(s) &&
     !readingsLabelRe.test(s) &&
-    !assignmentLabelRe.test(s);
+    !assignmentLabelRe.test(s) &&
+    !genstandLabelRe.test(s) &&
+    !notesLabelRe.test(s);
 
-  // Topic defaults to headerLine; for compact-fallback (no AU bullets matched), clean by removing leading date safely
   let topic = headerLine;
   if (parseHeaderAsContent) {
     const leadingDateReFallback =
-      /^\s*(?:(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\s+)?(?:d\.|den)?\s*\d{1,2}\.?\s*(?:jan(?:uar)?|feb(?:ruar)?|mar(?:ts)?|apr(?:il)?|maj|jun(?:i)?|jul(?:i)?|aug(?:ust)?|sep(?:tember)?|okt(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\s*:?\s*/i;
-    const stripped = headerLine.replace(leadingDateReFallback, "").trim();
-    if (stripped) topic = stripped;
+      /^\s*(?:(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\s+)?(?:d\.|den)?\s*\d{1,2}\.?\s*(?:jan(?:uar)?|feb(?:ruar)?|mar(?:ts)?|apr(?:il)?|maj|jun(?:i)?|jul(?:i)?|aug(?:ust)?|sep(?:tember)?|okt(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\s*:?-?\s*/i;
+    topic = normalizeWhitespace(topic.replace(leadingDateReFallback, ""));
   }
-
-  type Section = "readings" | "assignment" | "notes";
-  let section: Section = "notes";
-  let justEnteredLabeledSection = false;
 
   const readings: string[] = [];
   const assignmentParts: string[] = [];
   const notesParts: string[] = [];
 
-  for (const rawLine of contentLines) {
-    const line = rawLine.trim();
+  let section: "readings" | "assignment" | "notes" | "none" = "none";
+  let justEnteredLabeledSection = false;
 
-    if (!line) {
-      section = "notes";
-      justEnteredLabeledSection = false;
-      continue;
-    }
+  const pushReadingInlineRemainder = (prefix: string, remainder: string) => {
+    const cleanedPrefix = stripBullet(prefix).trim();
+    const cleanedRemainder = stripBullet(remainder).trim();
 
-    const readingsMatch = line.match(readingsLabelRe);
-    if (readingsMatch) {
-      section = "readings";
-      justEnteredLabeledSection = true;
-      pushReadings(readings, (readingsMatch[1] ?? "").trim());
-      continue;
-    }
-
-    const readingsInlineMatch = line.match(readingsInlineLabelRe);
-    if (readingsInlineMatch) {
-      const prefix = stripBullet((readingsInlineMatch[1] ?? "").trim());
-      const remainder = (readingsInlineMatch[2] ?? "").trim();
-
-      if (prefix) {
-        if (parseHeaderAsContent) {
-          topic = prefix;
-        } else {
-          notesParts.push(prefix);
-        }
+    if (cleanedPrefix && !looksLikeOtherHeading(cleanedPrefix)) {
+      if (cleanedPrefix.length > 2) {
+        topic = normalizeWhitespace([topic, cleanedPrefix].join(" "));
       }
+    }
+    if (cleanedRemainder) {
+      pushReadings(readings, cleanedRemainder);
+    }
+  };
 
+  for (const line of remainingLines) {
+    if (!line.trim()) continue;
+
+    const readingLabelMatch = line.match(readingsLabelRe);
+    if (readingLabelMatch) {
       section = "readings";
       justEnteredLabeledSection = true;
-      pushReadings(readings, remainder);
+      const remainder = stripBullet((readingLabelMatch[1] ?? "").trim());
+      if (remainder) pushReadings(readings, remainder);
+      continue;
+    }
+
+    const inlineReadingsMatch = line.match(readingsInlineLabelRe);
+    if (inlineReadingsMatch) {
+      section = "readings";
+      justEnteredLabeledSection = true;
+      const prefix = inlineReadingsMatch[1] ?? "";
+      const remainder = inlineReadingsMatch[2] ?? "";
+      pushReadingInlineRemainder(prefix, remainder);
       continue;
     }
 
@@ -500,28 +474,53 @@ function localParseSegment(segment: string): CourseItem[] {
       continue;
     }
 
+    const genstandMatch = line.match(genstandLabelRe);
+    if (genstandMatch) {
+      section = "assignment";
+      justEnteredLabeledSection = true;
+      const remainder = stripBullet((genstandMatch[1] ?? "").trim());
+      if (remainder) assignmentParts.push(remainder);
+      continue;
+    }
+
+    const notesMatch = line.match(notesLabelRe);
+    if (notesMatch) {
+      section = "notes";
+      justEnteredLabeledSection = true;
+      const remainder = stripBullet((notesMatch[1] ?? "").trim());
+      if (remainder) notesParts.push(remainder);
+      continue;
+    }
+
     const cleaned = stripBullet(line);
     if (!cleaned) continue;
 
-    const canContinueInSection =
-      isBulletish(line) ||
-      (justEnteredLabeledSection && !looksLikeOtherHeading(cleaned));
-
-    if (section === "readings" && canContinueInSection) {
-      pushReadings(readings, cleaned);
+    if (looksLikeOtherHeading(cleaned)) {
+      if (section === "readings") {
+        pushReadings(readings, cleaned);
+      } else if (section === "assignment") {
+        assignmentParts.push(cleaned);
+      } else {
+        section = "notes";
+        notesParts.push(cleaned);
+      }
       justEnteredLabeledSection = false;
       continue;
     }
 
-    if (section === "assignment" && canContinueInSection) {
+    if (section === "readings") {
+      if (justEnteredLabeledSection && !isBulletish(line) && looksLikeEventLine(line)) {
+        section = "notes";
+        notesParts.push(cleaned);
+      } else {
+        pushReadings(readings, cleaned);
+      }
+      justEnteredLabeledSection = false;
+      continue;
+    }
+
+    if (section === "assignment") {
       assignmentParts.push(cleaned);
-      justEnteredLabeledSection = false;
-      continue;
-    }
-
-    if (parseHeaderAsContent) {
-      topic = cleaned;
-      section = "notes";
       justEnteredLabeledSection = false;
       continue;
     }
@@ -531,500 +530,458 @@ function localParseSegment(segment: string): CourseItem[] {
     notesParts.push(cleaned);
   }
 
+  const assignmentText = assignmentParts.join(" ").trim();
+  const notesText = notesParts.join(" ").trim();
+  const hasTopicSignal =
+    topic.trim().length >= 6 && /[A-Za-zÆØÅæøå]/.test(topic);
+
+  if (!hasTopicSignal && readings.length === 0 && !assignmentText && !notesText) {
+    return [];
+  }
+
   return [
     {
       type: "session",
       date,
       topic,
       readings,
-      assignment: assignmentParts.join(" ").trim(),
-      notes: notesParts.join(" ").trim(),
+      assignment: assignmentText,
+      notes: notesText,
       sourceText: segment,
     } as any,
   ];
 }
 
 function extractTextOutput(data: any): string {
-  // OpenAI ChatCompletion response format
-  if (data?.choices && Array.isArray(data.choices) && data.choices.length > 0) {
-    const firstChoice = data.choices[0];
-    if (typeof firstChoice?.message?.content === "string") {
-      return firstChoice.message.content.trim();
-    }
-  }
-
+  const msg = data?.choices?.[0]?.message?.content;
+  if (typeof msg === "string") return msg;
+  const text = data?.choices?.[0]?.text;
+  if (typeof text === "string") return text;
   return "";
 }
 
-function safeParseJson(text: string): { items: unknown[] } {
+function safeJsonParse<T>(input: string): T | null {
   try {
-    const parsed = JSON.parse(text);
-
-    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.items)) {
-      return { items: [] };
-    }
-
-    return { items: parsed.items };
+    return JSON.parse(input);
   } catch {
-    return { items: [] };
-  }
-}
-
-function toStringValue(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function toStringArray(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return [
-      ...new Set(
-        value
-          .map((item) => (typeof item === "string" ? item.trim() : ""))
-          .filter(Boolean),
-      ),
-    ];
-  }
-
-  if (typeof value === "string" && value.trim()) {
-    return [value.trim()];
-  }
-
-  return [];
-}
-
-function normalizeItem(raw: unknown): CourseItem | null {
-  if (!raw || typeof raw !== "object") {
     return null;
   }
+}
 
-  const item = raw as Record<string, unknown>;
-  const type = toStringValue(item.type).toLowerCase();
+function normalizeItem(item: any): CourseItem | null {
+  if (!item || typeof item !== "object") return null;
 
+  const type = item.type;
   if (type === "course_info") {
-    const normalized: CourseInfoItem = {
+    return {
       type: "course_info",
-      title: toStringValue(item.title),
-      teachers: toStringArray(item.teachers),
-      schedule: toStringArray(item.schedule),
-      notes: toStringValue(item.notes),
+      title: typeof item.title === "string" ? item.title : "",
+      teachers: Array.isArray(item.teachers)
+        ? item.teachers.filter((t: any) => typeof t === "string")
+        : [],
+      schedule: Array.isArray(item.schedule)
+        ? item.schedule.filter((t: any) => typeof t === "string")
+        : [],
+      notes: typeof item.notes === "string" ? item.notes : "",
     };
-
-    const hasData =
-      !!normalized.title ||
-      normalized.teachers.length > 0 ||
-      normalized.schedule.length > 0 ||
-      !!normalized.notes;
-
-    return hasData ? normalized : null;
   }
 
   if (type === "session") {
-    const normalized: SessionItem = {
-  type: "session",
-  date: toStringValue(item.date),
-  topic: toStringValue(item.topic),
-  readings: toStringArray(item.readings),
-  assignment: toStringValue(item.assignment),
-  notes: toStringValue(item.notes),
-  sourceText: toStringValue(item.sourceText),
-};
-
-    const hasData =
-      !!normalized.date ||
-      !!normalized.topic ||
-      normalized.readings.length > 0 ||
-      !!normalized.assignment ||
-      !!normalized.notes;
-
-    return hasData ? normalized : null;
+    return {
+      type: "session",
+      date: typeof item.date === "string" ? item.date : "",
+      topic: typeof item.topic === "string" ? item.topic : "",
+      readings: Array.isArray(item.readings)
+        ? item.readings.filter((t: any) => typeof t === "string")
+        : [],
+      assignment: typeof item.assignment === "string" ? item.assignment : "",
+      notes: typeof item.notes === "string" ? item.notes : "",
+      sourceText: typeof item.sourceText === "string" ? item.sourceText : "",
+    };
   }
 
   if (type === "event") {
-    const normalized: EventItem = {
+    return {
       type: "event",
-      date: toStringValue(item.date),
-      title: toStringValue(item.title),
-      notes: toStringValue(item.notes),
+      date: typeof item.date === "string" ? item.date : "",
+      title: typeof item.title === "string" ? item.title : "",
+      details: typeof item.details === "string" ? item.details : "",
+      sourceText: typeof item.sourceText === "string" ? item.sourceText : "",
     };
-
-    const hasData =
-      !!normalized.date || !!normalized.title || !!normalized.notes;
-
-    return hasData ? normalized : null;
   }
 
   return null;
 }
 
-function normalizeItems(rawItems: unknown[]): CourseItem[] {
-  return rawItems
-    .map(normalizeItem)
-    .filter((item): item is CourseItem => item !== null);
-}
-
 function cleanAndMergeItems(items: CourseItem[]): CourseItem[] {
-  const mergedCourseInfo: CourseInfoItem = {
-    type: "course_info",
-    title: "",
-    teachers: [],
-    schedule: [],
-    notes: "",
-  };
-
-  const sessionMap = new Map<string, SessionItem>();
-  const eventMap = new Map<string, EventItem>();
+  const cleaned: CourseItem[] = [];
+  let last: CourseItem | null = null;
 
   for (const item of items) {
     if (item.type === "course_info") {
-      if (!mergedCourseInfo.title && item.title) {
-        mergedCourseInfo.title = item.title;
+      if (last?.type === "course_info") {
+        last.notes = normalizeWhitespace(
+          [last.notes, item.notes].filter(Boolean).join(" "),
+        );
+        continue;
       }
-
-      mergedCourseInfo.teachers.push(...item.teachers);
-      mergedCourseInfo.schedule.push(...item.schedule);
-
-      if (!mergedCourseInfo.notes && item.notes) {
-        mergedCourseInfo.notes = item.notes;
-      }
-
+      cleaned.push(item);
+      last = item;
       continue;
     }
 
-    if (item.type === "session") {
-      const key = [
-        item.date.toLowerCase(),
-        item.topic.toLowerCase(),
-        item.readings.join("|").toLowerCase(),
-        item.assignment.toLowerCase(),
-        item.notes.toLowerCase(),
-      ].join("::");
-
-      if (!sessionMap.has(key)) {
-        sessionMap.set(key, {
-  type: "session",
-  date: item.date,
-  topic: item.topic,
-  readings: [...new Set(item.readings.filter(Boolean))],
-  assignment: item.assignment,
-  notes: item.notes,
-  sourceText: item.sourceText,
-});
-      }
-
-      continue;
-    }
-
-    if (item.type === "event") {
-      const key = [
-        item.date.toLowerCase(),
-        item.title.toLowerCase(),
-        item.notes.toLowerCase(),
-      ].join("::");
-
-      if (!eventMap.has(key)) {
-        eventMap.set(key, item);
+    if (item.type === "session" && last?.type === "session") {
+      if (item.date && last.date && item.date === last.date) {
+        last.topic = normalizeWhitespace(
+          [last.topic, item.topic].filter(Boolean).join(" "),
+        );
+        last.readings = [...last.readings, ...item.readings].filter(Boolean);
+        last.assignment = normalizeWhitespace(
+          [last.assignment, item.assignment].filter(Boolean).join(" "),
+        );
+        last.notes = normalizeWhitespace(
+          [last.notes, item.notes].filter(Boolean).join(" "),
+        );
+        last.sourceText = normalizeWhitespace(
+          [last.sourceText, item.sourceText].filter(Boolean).join("\n"),
+        );
+        continue;
       }
     }
+
+    cleaned.push(item);
+    last = item;
   }
 
-  mergedCourseInfo.teachers = [
-    ...new Set(mergedCourseInfo.teachers.filter(Boolean)),
-  ];
-  mergedCourseInfo.schedule = [
-    ...new Set(mergedCourseInfo.schedule.filter(Boolean)),
-  ];
-
-  const hasCourseInfo =
-    !!mergedCourseInfo.title ||
-    mergedCourseInfo.teachers.length > 0 ||
-    mergedCourseInfo.schedule.length > 0 ||
-    !!mergedCourseInfo.notes;
-
-  const mergedItems: CourseItem[] = [];
-
-  if (hasCourseInfo) {
-    mergedItems.push(mergedCourseInfo);
-  }
-
-  mergedItems.push(...Array.from(sessionMap.values()));
-  mergedItems.push(...Array.from(eventMap.values()));
-
-  return mergedItems;
+  return cleaned;
 }
 
-async function callOpenAI(input: string, apiKey: string): Promise<string> {
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+function splitOnDateAnchorLines(block: string): string[] {
+  const lines = block.split("\n");
+  const out: string[] = [];
+
+  let current: string[] = [];
+
+  const flush = () => {
+    const seg = current.join("\n").trim();
+    if (seg) out.push(seg);
+    current = [];
+  };
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) {
+      current.push(raw);
+      continue;
+    }
+
+    if (isDateLine(line)) {
+      if (current.some((l) => l.trim().length > 0)) flush();
+      current.push(raw);
+      continue;
+    }
+
+    current.push(raw);
+  }
+
+  flush();
+  return out;
+}
+function splitOnInlineWeekdayDateAnchors(text: string): string[] {
+  const input = text.trim();
+  if (!input) return [];
+
+  const anchorRe =
+    /(^|[^\p{L}])((?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\s+(?:(?:d\.|den)\s*)?\d{1,2}\.)/giu;
+
+  const anchors: number[] = [];
+  let m: RegExpExecArray | null;
+
+  while ((m = anchorRe.exec(input)) !== null) {
+    const prefixLen = m[1]?.length ?? 0;
+    const weekdayStart = (m.index ?? 0) + prefixLen;
+    anchors.push(weekdayStart);
+
+    if (anchorRe.lastIndex === m.index) anchorRe.lastIndex += 1;
+  }
+
+  if (anchors.length <= 1) return [input];
+
+  const uniq = Array.from(new Set(anchors)).sort((a, b) => a - b);
+
+  const out: string[] = [];
+  for (let i = 0; i < uniq.length; i++) {
+    const start = uniq[i];
+    const end = i + 1 < uniq.length ? uniq[i + 1] : input.length;
+    const seg = input.slice(start, end).trim();
+    if (seg) out.push(seg);
+  }
+
+  return out;
+}
+
+function segmentText(fullText: string): string[] {
+  const blocks = fullText
+    .split(/\n\s*\n+/)
+    .map((b) => b.trim())
+    .filter(Boolean);
+
+  const base = blocks.length ? blocks : [fullText.trim()].filter(Boolean);
+
+  const refined: string[] = [];
+  for (const block of base) {
+    const dateLineParts = splitOnDateAnchorLines(block);
+    for (const part of dateLineParts) {
+      const inlineParts = splitOnInlineWeekdayDateAnchors(part);
+      refined.push(...inlineParts);
+    }
+  }
+
+  return refined;
+}
+
+async function openAiExtractItemsFromSegment(
+  apiKey: string,
+  segment: string,
+): Promise<any[] | null> {
+  const systemPrompt =
+    `You are a parser. Extract course schedule items from a segment of Danish course text.
+Return JSON ONLY, as an array of items.
+Each item must include:
+- type: "course_info" | "session" | "event"
+- For course_info: title, teachers[], schedule[], notes
+- For session: date, topic, readings[], assignment, notes, sourceText
+- For event: date, title, details, sourceText
+Always include sourceText as the exact source segment.
+
+Rules:
+- readings[] is only for literature/pensum.
+- assignment is for exercises/tasks/prep objects.
+- notes is for OBS, supplementary, logistics.`;
+
+  const userPrompt = `SEGMENT:\n${segment}`;
+
+  const body = {
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    temperature: 0,
+  };
+
+  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "user",
-          content: input,
-        },
-      ],
-    }),
+    body: JSON.stringify(body),
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenAI error ${response.status}: ${errorText}`);
-  }
+  if (!resp.ok) return null;
 
-  const data = await response.json();
-  return extractTextOutput(data);
+  const data = await resp.json();
+  const content = extractTextOutput(data);
+  const parsed = safeJsonParse<any[]>(content);
+  if (!parsed || !Array.isArray(parsed)) return null;
+
+  return parsed;
 }
 
-function looksLikeCourseInfo(segment: string): boolean {
-  return /(?:undviser|undervisning|litteratur|forkortelser|kursusbeskrivelse|læseplan|materiale|kontakt|om kurset)/i
-    .test(segment);
-}
-
-function looksLikeSession(segment: string): boolean {
-  // Danish university course pattern: Mandag d. X, Onsdag d. Y with content about readings/assignments
-  const hasDanishDate = /mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag.*(?:d\.|den)?\s*\d{1,2}/i.test(segment);
-  const hasSessionContent =
-    /læsestof|readings?:|genstand:|supplerende:|øvelser|session|tema|emne|diskussion|case-arbejde|vejledning/i
-      .test(segment);
-
-  return hasDanishDate || hasSessionContent;
-}
-
-function looksLikeEvent(segment: string): boolean {
-  return /\b(?:obs|deadline|seminar|workshop|påskeferie|ferie|feedback|vejledning|afslutning|talefest|skriveøvelse|midtvejsevaluering|individuel vejledning|gruppearbejde)\b/i
-    .test(segment);
-}
-
-function shouldIgnoreSegment(segment: string): boolean {
-  const compact = normalizeWhitespace(segment);
-
-  if (!compact) {
-    return true;
-  }
-
-  if (compact.length < 12) {
-    return true;
-  }
-
-  return false;
-}
-
-async function classifySegment(
-  segment: string,
-  apiKey: string,
-): Promise<SegmentType> {
-  const prompt = `
-Return ONLY valid JSON.
-{
-"type": "course_info" | "session" | "event" | "ignore"
-}
-Segment:
-${segment}
-`.trim();
-
-  const textOutput = await callOpenAI(prompt, apiKey);
-
-  if (!textOutput) {
-    return "ignore";
-  }
-
-  try {
-    const parsed = JSON.parse(textOutput);
-    const type = typeof parsed?.type === "string"
-      ? parsed.type.trim().toLowerCase()
-      : "";
-
-    if (
-      type === "course_info" ||
-      type === "session" ||
-      type === "event" ||
-      type === "ignore"
-    ) {
-      return type;
-    }
-
-    return "ignore";
-  } catch {
-    return "ignore";
-  }
-}
-
-async function extractCourseInfo(
-  segment: string,
-  apiKey: string,
-): Promise<CourseItem[]> {
-  const prompt = `Extract course metadata from a university syllabus. Look for:
-- Course title/name
-- Teachers/instructors (underviser, v/, led af, instruktør)
-- Schedule/meeting times (Mandag kl., Onsdag kl., etc.)
-- Reading materials/textbooks
-- Course description
-- Course code
-- Meeting locations (lokale)
-- Exam format
-
-Return JSON with this structure:
-{
-  "type": "course_info",
-  "title": "course name/title",
-  "teachers": ["list of instructor names"],
-  "schedule": ["list of meeting times (e.g., 'Mandag kl. 11-14', 'Onsdag kl. 10-13')"],
-  "notes": "other course metadata (exam format, materials abbreviations, etc.)"
-}
-
-Return {"items": []} if no course info found.
-
-Text:
-${segment}`;
-
-  try {
-    const textOutput = await callOpenAI(prompt, apiKey);
-    const parsed = safeParseJson(textOutput);
-    const normalized = normalizeItems(parsed.items);
-    return normalized.length > 0 ? normalized : localParseSegment(segment);
-  } catch {
-    return localParseSegment(segment);
-  }
-}
-
-async function extractEvent(
-  segment: string,
-  apiKey: string,
-): Promise<CourseItem[]> {
-  const prompt = `Extract event information from this text. Look for special events like:
-- OBS (observations/announcements)
-- DEADLINE
-- Seminar
-- Workshop
-- Ferie (holidays)
-- Feedback
-- Vejledning (guidance)
-- Afslutning (conclusion)
-- Talefest (speech competition)
-- Skriveøvelse (writing exercise)
-- Midtvejsevaluering (midterm evaluation)
-- Gruppeworkshop
-
-Return JSON array with this structure for EACH event:
-{
-  "type": "event",
-  "date": "extracted date (e.g., 'Mandag d. 9. februar' or 'Onsdag 25. marts')",
-  "title": "event name/title",
-  "notes": "additional details"
-}
-
-Return {"items": []} if no events found.
-
-Text:
-${segment}`;
-
-  try {
-    const textOutput = await callOpenAI(prompt, apiKey);
-    const parsed = safeParseJson(textOutput);
-    const normalized = normalizeItems(parsed.items);
-    return normalized.length > 0 ? normalized : localParseSegment(segment);
-  } catch {
-    return localParseSegment(segment);
-  }
-}
-
-async function extractSession(
-  segment: string,
-  apiKey: string,
-): Promise<CourseItem[]> {
-  const prompt = `You are parsing a university course syllabus. Extract ALL individual sessions from this text.
-Each session is marked by a Danish date like "Mandag d. 4. februar:" or "Onsdag d. 11. februar:".
-
-For EACH session found, return as JSON array with this structure:
-{
-  "type": "session",
-  "date": "extracted date only (e.g., 'Mandag d. 4. februar')",
-  "topic": "first topic/title after the date",
-  "readings": ["list of readings mentioned"],
-  "assignment": "assignment if mentioned, else empty string",
-  "notes": "rest of the content for that session"
-}
-
-Important:
-- If there are MULTIPLE sessions, return MULTIPLE objects in the "items" array
-- Extract dates AS-IS (don't convert to YYYY-MM-DD)
-- Keep readings as a list
-- Return {"items": []} if no sessions found
-
-Text:
-${segment}`;
-
-  try {
-    const textOutput = await callOpenAI(prompt, apiKey);
-    const parsed = safeParseJson(textOutput);
-    const normalized = normalizeItems(parsed.items);
-    return normalized.length > 0 ? normalized : localParseSegment(segment);
-  } catch {
-    return localParseSegment(segment);
-  }
+function recordSegmentYield(
+  telemetry: SegmentTelemetry,
+  yielded: CourseItem[],
+): CourseItem[] {
+  telemetry.yieldedItems += yielded.length;
+  return yielded;
 }
 
 async function analyzeSegmentWithPipeline(
+  apiKey: string | null,
   segment: string,
-  apiKey: string,
-  telemetry: PipelineTelemetry,
+  telemetry: SegmentTelemetry,
 ): Promise<CourseItem[]> {
-  if (shouldIgnoreSegment(segment)) {
-    telemetry.ignoredSegments += 1;
-    return recordSegmentYield(telemetry, []);
-  }
+  telemetry.extractedSegments += 1;
 
   if (looksLikeCourseInfo(segment)) {
-    telemetry.extractorPathCounts.courseInfoHeuristic += 1;
-    const items = await extractCourseInfo(segment, apiKey);
-    return recordSegmentYield(telemetry, items);
+    const local = localParseSegment(segment).filter((i) => i.type === "course_info");
+    if (local.length) {
+      telemetry.localParsedSegments += 1;
+      return recordSegmentYield(telemetry, local);
+    }
   }
 
+  if (false && apiKey) {
+    const extracted = await openAiExtractItemsFromSegment(apiKey, segment);
+    if (extracted) {
+      const normalized = extracted
+        .map((item) => normalizeItem(item))
+        .filter((x): x is CourseItem => !!x)
+        .filter((item) => {
+          const src = (item as any).sourceText || segment;
+          if (isDateTimeOnlySegment(src)) return false;
+          if (item.type === "event") return !hasMeaningfulSessionSignal(src);
+          if (item.type === "session") return hasMeaningfulSessionSignal(src);
+          return true;
+        });
+
+      if (normalized.length) {
+        return recordSegmentYield(telemetry, normalized);
+      }
+    }
+  }
+
+  telemetry.localParsedSegments += 1;
+
   if (looksLikeEvent(segment)) {
-    telemetry.extractorPathCounts.eventHeuristic += 1;
-    const items = await extractEvent(segment, apiKey);
-    return recordSegmentYield(telemetry, items);
+    const lines = segment.split("\n").map((l) => l.trim()).filter(Boolean);
+    const header = lines.find((l) => !isWeekLine(l)) ?? "";
+    const dateLine = lines.find((l) => isDateLine(l)) ?? header;
+    const date = extractDateFromLine(dateLine) ?? "";
+    const details = normalizeWhitespace(lines.slice(1).join(" "));
+    return recordSegmentYield(telemetry, [
+      {
+        type: "event",
+        date,
+        title: normalizeWhitespace(header),
+        details,
+        sourceText: segment,
+      },
+    ]);
   }
 
   if (looksLikeSession(segment)) {
-    telemetry.extractorPathCounts.sessionHeuristic += 1;
-    const items = await extractSession(segment, apiKey);
-    return recordSegmentYield(telemetry, items);
+    const local = localParseSegment(segment);
+    if (local.length) return recordSegmentYield(telemetry, local);
   }
 
-  const type = await classifySegment(segment, apiKey);
+  return recordSegmentYield(telemetry, localParseSegment(segment));
+}
 
-  if (type === "course_info") {
-    telemetry.extractorPathCounts.courseInfoClassifier += 1;
-    const items = await extractCourseInfo(segment, apiKey);
-    return recordSegmentYield(telemetry, items);
+async function analyzeCourseText(
+  fullText: string,
+  apiKey: string | null,
+): Promise<AnalyzeResponse> {
+ const segments = segmentText(fullText);
+
+const debugSegments = segments.slice(0, 5);
+const debugSignals = debugSegments.map((segment) => ({
+  rawSegmentText: segment,
+  hasMeaningfulSessionSignal: hasMeaningfulSessionSignal(segment),
+  looksLikeSession: looksLikeSession(segment),
+  looksLikeEvent: looksLikeEvent(segment),
+}));
+
+const telemetry: SegmentTelemetry = {
+  totalSegments: segments.length,
+  extractedSegments: 0,
+  localParsedSegments: 0,
+  yieldedItems: 0,
+};
+
+const items: CourseItem[] = [];
+
+for (const segment of segments) {
+  const yielded = await analyzeSegmentWithPipeline(apiKey, segment, telemetry);
+  items.push(...yielded);
+}
+
+  const normalized = items
+    .map((item) => normalizeItem(item))
+    .filter((x): x is CourseItem => !!x);
+
+  const cleaned = cleanAndMergeItems(normalized);
+
+  return {
+  segmentCount: segments.length,
+  items: cleaned,
+  debugSegments,
+  debugSignals,
+} as any;
+}
+
+function getEnv(name: string): string | null {
+  try {
+    return Deno.env.get(name) ?? null;
+  } catch {
+    return null;
   }
+}
 
-  if (type === "event") {
-    telemetry.extractorPathCounts.eventClassifier += 1;
-    const items = await extractEvent(segment, apiKey);
-    return recordSegmentYield(telemetry, items);
-  }
+// --------------------
+// v1.2.1 minimal self-tests (pure functions, table-driven)
+// Run locally with: deno test --allow-env index.ts
+// These are guarded so the Edge runtime won't try to register tests.
+// --------------------
+if (typeof Deno !== "undefined" && typeof (Deno as any).test === "function") {
+  const assertEq = <T>(name: string, actual: T, expected: T) => {
+    if (actual !== expected) {
+      throw new Error(`${name}: expected ${String(expected)} got ${String(actual)}`);
+    }
+  };
 
-  if (type === "session") {
-    telemetry.extractorPathCounts.sessionClassifier += 1;
-    const items = await extractSession(segment, apiKey);
-    return recordSegmentYield(telemetry, items);
-  }
+  const cases = [
+    {
+      name: "1) date/time-only segment is detected and not a session",
+      segment: "Mandag d. 3. februar\nkl. 10:15-12:00",
+      expectDateTimeOnly: true,
+      expectSession: false,
+      expectEvent: false,
+    },
+    {
+      name: "2) real teaching session with topic + readings becomes session",
+      segment:
+        "Mandag d. 3. februar\nTema: Introduktion til argumentation\nPensum: Kap. 1-2 (Bog X)",
+      expectDateTimeOnly: false,
+      expectSession: true,
+      expectEvent: false,
+    },
+    {
+      name: "3) real teaching entry should not become event",
+      segment:
+        "Onsdag d. 5. februar\nWorkshop: Case-arbejde\nLitteratur: Artikel Y\nOpgave: Kort refleksion",
+      expectDateTimeOnly: false,
+      expectSession: true,
+      expectEvent: false,
+    },
+    {
+      name: "4) course metadata block without date should not become session",
+      segment:
+        "Kursusbeskrivelse\nLitteratur: Bog A, Bog B\nForkortelser: AU\nKontakt: underviser",
+      expectDateTimeOnly: false,
+      expectSession: false,
+      expectEvent: false,
+    },
+  ] as const;
 
-  /* LOCAL FALLBACK */
-  telemetry.extractorPathCounts.classifierIgnored += 1;
-  telemetry.extractorPathCounts.fallbackLocal += 1;
-  const localItems = localParseSegment(segment);
-  if (localItems.length > 0) {
-    return recordSegmentYield(telemetry, localItems);
-  }
+  Deno.test("v1.2.1: isDateTimeOnlySegment()", () => {
+    for (const c of cases) {
+      assertEq(c.name, isDateTimeOnlySegment(c.segment), c.expectDateTimeOnly);
+    }
+  });
 
-  return recordSegmentYield(telemetry, []);
+  Deno.test("v1.2.1: looksLikeSession()", () => {
+    for (const c of cases) {
+      assertEq(c.name, looksLikeSession(c.segment), c.expectSession);
+    }
+  });
+
+  Deno.test("v1.2.1: real teaching entry not event (sanity)", () => {
+    for (const c of cases) {
+      assertEq(c.name, looksLikeEvent(c.segment), c.expectEvent);
+    }
+  });
+
+  Deno.test("v1.2.1: localParseSegment() metadata block → course_info (regression)", () => {
+    const segment =
+      "Kursusbeskrivelse\nLitteratur: Bog A, Bog B\nForkortelser: AU\nKontakt: underviser";
+
+    const items = localParseSegment(segment);
+    assertEq("returns single item", items.length, 1);
+    assertEq("item is course_info", (items[0] as any).type, "course_info");
+    assertEq("not a session", (items[0] as any).type === "session", false);
+  });
 }
 
 Deno.serve(async (req: Request) => {
@@ -1033,84 +990,19 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { text } = await req.json();
+    const apiKey = getEnv("OPENAI_API_KEY");
 
-    if (!text || typeof text !== "string") {
-      return new Response(
-        JSON.stringify({ error: "Missing or invalid 'text'" }),
-        {
-          status: 400,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
-        },
-      );
-    }
+    const body = await req.json();
+    const fullText = typeof body?.text === "string" ? body.text : "";
 
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    const result = await analyzeCourseText(fullText, apiKey);
 
-    if (!OPENAI_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: "OPENAI_API_KEY missing" }),
-        {
-          status: 500,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
-        },
-      );
-    }
-
-    const segments = segmentText(text);
-    const telemetry = createPipelineTelemetry();
-    const allItems: CourseItem[] = [];
-
-    for (const segment of segments) {
-      const items = await analyzeSegmentWithPipeline(
-        segment,
-        OPENAI_API_KEY,
-        telemetry,
-      );
-      allItems.push(...items);
-    }
-
-    const cleanedItems = cleanAndMergeItems(allItems);
-
-    const fallbackRate = telemetry.segmentItemYield.totalSegments > 0
-      ? telemetry.extractorPathCounts.fallbackLocal /
-        telemetry.segmentItemYield.totalSegments
-      : 0;
-
-    const nonEmptyItemYield = telemetry.segmentItemYield.totalSegments > 0
-      ? telemetry.segmentItemYield.nonEmptySegments /
-        telemetry.segmentItemYield.totalSegments
-      : 0;
-
-    console.log(
-      JSON.stringify({
-        type: "analyze-course.telemetry",
-        segmentCount: segments.length,
-        fallbackRate,
-        nonEmptyItemYield,
-        extractorPathCounts: telemetry.extractorPathCounts,
-        segmentItemYield: telemetry.segmentItemYield,
-      }),
-    );
-
-    return new Response(
-      JSON.stringify({
-        segmentCount: segments.length,
-        items: cleanedItems,
-      }),
-      {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
+    return new Response(JSON.stringify(result), {
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json",
       },
-    );
+    });
   } catch (error) {
     return new Response(
       JSON.stringify({
