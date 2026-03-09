@@ -202,6 +202,7 @@ function localParseSegment(segment: string): CourseItem[] {
   }
 
   let effectiveNonWeekLines = nonWeekLines;
+
 const firstDateIdx = effectiveNonWeekLines.findIndex((l) => isDateLine(l));
 if (firstDateIdx > 0) {
   const dateLine = effectiveNonWeekLines[firstDateIdx];
@@ -210,12 +211,8 @@ if (firstDateIdx > 0) {
   if (extracted) {
     const lead = effectiveNonWeekLines.slice(0, firstDateIdx);
 
-    const isBulletish = (l: string) =>
-      /^(?:[-*•‣∙]\s*|\d+\.\s+)/.test(l);
-
-    const isPrefixedNote = (l: string) =>
-      /^(?:supplerende|obs|genstande?|materiale|litteratur|pensum|opgave|forbered(?:else)?)\b[:.!]?\s*/i.test(l);
-
+    const isBulletish = (l: string) => /^(?:[-*•‣∙]\s*|\d+\.\s+)/.test(l);
+    const isPrefixedNote = (l: string) => /^(?:supplerende|obs)\b[:.!]?\s*/i.test(l);
     const isCitationish = (l: string) =>
       /[“"']/.test(l) ||
       /\b(19|20)\d{2}\b/.test(l) ||
@@ -226,66 +223,19 @@ if (firstDateIdx > 0) {
     const isShortContinuationProse = (l: string) =>
       l.length <= 45 && /^[a-zæøå(,]/.test(l);
 
-    const isLiteratureish = (l: string) => {
-      const t = l.trim();
-
-      if (
-        /^(?:[A-ZÆØÅ]\.\s*){1,3}[A-ZÆØÅ][A-Za-zÆØÅæøå\-]+(?:\s+[A-ZÆØÅ][A-Za-zÆØÅæøå\-]+){0,3}\s*[:,]/.test(t)
-      ) {
-        return true;
-      }
-
-      if (/^[A-ZÆØÅ][A-Za-zÆØÅæøå\-]+,\s*(?:[A-ZÆØÅ]\.\s*){1,3}/.test(t)) {
-        return true;
-      }
-
-      return false;
-    };
-
     const looksLikeContinuation = (l: string) =>
-      isBulletish(l) ||
-      isPrefixedNote(l) ||
-      isCitationish(l) ||
-      isLiteratureish(l) ||
-      isShortContinuationProse(l);
-
-    const isLabelOnlyLine = (l: string) =>
-      /^(?:pensum|litteratur|reading|readings|tekst|opgave|assignment|forbered|prepare|genstande?|obs|supplerende)\b\s*(?::|,|[-–])?/i.test(
-        l.trim()
-      );
+      isBulletish(l) || isPrefixedNote(l) || isCitationish(l) || isShortContinuationProse(l);
 
     const leadAllContinuation = lead.every(looksLikeContinuation);
-
-    const leadHasHeaderish = lead.some((l) => {
-      const t = l.trim();
-      if (!t) return false;
-      if (isLabelOnlyLine(t)) return false;
-      if (looksLikeContinuation(t)) return false;
-      return looksLikeSession(t) || looksLikeEvent(t);
-    });
+    const leadHasHeaderish = lead.some((l) => looksLikeSession(l) || looksLikeEvent(l));
 
     if (leadAllContinuation && !leadHasHeaderish) {
       effectiveNonWeekLines = effectiveNonWeekLines.slice(firstDateIdx);
     }
   }
 }
-const headerLine =
-  effectiveNonWeekLines.find((l) => {
-    const t = l.trim();
 
-    if (!t) return false;
-
-    if (/^(?:[-*•‣∙]\s*)/.test(t)) return false;
-
-    if (/^(?:supplerende|obs|genstande?|pensum|litteratur)\b/i.test(t)) return false;
-
-    if (
-      /^(?:[A-ZÆØÅ]\.\s*){1,3}[A-ZÆØÅ][A-Za-zÆØÅæøå\-]+(?:\s+[A-ZÆØÅ][A-Za-zÆØÅæøå\-]+){0,3}\s*[:,]/.test(t)
-    )
-      return false;
-
-    return true;
-  }) || effectiveNonWeekLines[0];
+const headerLine = effectiveNonWeekLines[0];
 const dateSourceLine =
   effectiveNonWeekLines.find((line) => isDateLine(line)) ?? headerLine;
 const date = extractDateFromLine(dateSourceLine) ?? "";
@@ -531,8 +481,7 @@ topic = topic.replace(/^\s*[:\-–,]+\s*/, "").trim();
     const lead = effectiveNonWeekLines.slice(0, dateSourceIdx);
 
     const isBulletishLead = (l: string) => /^(?:[-*•‣∙]\s*|\d+\.\s+)/.test(l);
-    const isNoteishLead = (l: string) =>
-  /^(?:supplerende|obs|genstande?|materiale|litteratur|pensum|opgave|forbered(?:else)?)\b[:.!]?\s*/i.test(l);
+    const isNoteishLead = (l: string) => /^(?:supplerende|obs)\b[:.!]?\s*/i.test(l);
     const isCitationishLead = (l: string) =>
       /[“"']/.test(l) ||
       /\b(19|20)\d{2}\b/.test(l) ||
@@ -543,34 +492,23 @@ topic = topic.replace(/^\s*[:\-–,]+\s*/, "").trim();
     const isShortContinuationProse = (l: string) =>
       l.length <= 45 && /^[a-zæøå(,]/.test(l);
 
-    const isLiteratureishLead = (l: string) => {
-  const t = l.trim();
-
-  // Initial(s) + surname + ":" or ","
-  if (/^(?:[A-ZÆØÅ]\.\s*){1,3}[A-ZÆØÅ][A-Za-zÆØÅæøå\-]+(?:\s+[A-ZÆØÅ][A-Za-zÆØÅæøå\-]+){0,3}\s*[:,]/.test(t)) {
-    return true;
-  }
-
-  // "Surname, I."
-  if (/^[A-ZÆØÅ][A-Za-zÆØÅæøå\-]+,\s*(?:[A-ZÆØÅ]\.\s*){1,3}/.test(t)) {
-    return true;
-  }
-
-  return false;
-};
+    const isClearlyNotSessionStart = (l: string) => {
+      const t = l.trim();
+      if (!t) return true;
+      if (isDateLine(t)) return false;
+      if (looksLikeEventLine(t)) return false;
+      if (looksLikeSession(t) || looksLikeEvent(t)) return false;
+      return true;
+    };
 
     const looksLikeContinuationLead = (l: string) =>
-  isBulletishLead(l) ||
-  isNoteishLead(l) ||
-  isCitationishLead(l) ||
-  isLiteratureishLead(l) ||
-  isShortContinuationProse(l);
+      isBulletishLead(l) ||
+      isNoteishLead(l) ||
+      isCitationishLead(l) ||
+      isShortContinuationProse(l) ||
+      isClearlyNotSessionStart(l);
 
     const leadAllContinuation = lead.every(looksLikeContinuationLead);
-    throw new Error("LEAD DEBUG: " + JSON.stringify({
-  lead,
-  matches: lead.map(l => looksLikeContinuationLead(l))
-}));
 
     // Don't let label-ish lines (e.g. "Litteratur:", "Pensum:", "Opgave:", "Obs:")
     // count as a "headerish" blocker for trimming to the later real date.
