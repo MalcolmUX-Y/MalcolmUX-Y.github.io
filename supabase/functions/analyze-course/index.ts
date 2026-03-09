@@ -63,7 +63,7 @@ function isDateLine(line: string): boolean {
 
 function extractDateFromLine(line: string): string | null {
   const match = line.match(
-    /(?:(mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)?\s*d?\.\s*\d{1,2}\.?\s*(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec|januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december))/i,
+    /\b(?:(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\b\s+)?(?:(?:d\.|den)\s*)?\d{1,2}\.?\s*(?:januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december|jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)\b/i,
   );
 
   return match ? match[0] : null;
@@ -170,7 +170,7 @@ function looksLikeEvent(segment: string): boolean {
 
 function localParseSegment(segment: string): CourseItem[] {
   const stripBullet = (s: string) =>
-    s.replace(/^(?:[-*•‣∙]\s+|\d+\.\s+)/, "").trim();
+  s.replace(/^(?:[-*•‣∙]\s*|\d+\.\s+)/, "").trim();
 
   const pushReadings = (arr: string[], s: string) => {
     const cleaned = stripBullet(s);
@@ -201,12 +201,47 @@ function localParseSegment(segment: string): CourseItem[] {
     ];
   }
 
-  const headerLine = nonWeekLines[0];
-  const dateSourceLine = lines.find((line) => isDateLine(line)) ?? headerLine;
-  const date = extractDateFromLine(dateSourceLine) ?? "";
+  let effectiveNonWeekLines = nonWeekLines;
 
-  const remainingLines = nonWeekLines.slice(1);
-  const bodyJoined = remainingLines.join("\n").trim();
+const firstDateIdx = effectiveNonWeekLines.findIndex((l) => isDateLine(l));
+if (firstDateIdx > 0) {
+  const dateLine = effectiveNonWeekLines[firstDateIdx];
+  const extracted = extractDateFromLine(dateLine);
+
+  if (extracted) {
+    const lead = effectiveNonWeekLines.slice(0, firstDateIdx);
+
+    const isBulletish = (l: string) => /^(?:[-*•‣∙]\s*|\d+\.\s+)/.test(l);
+    const isPrefixedNote = (l: string) => /^(?:supplerende|obs)\b[:.!]?\s*/i.test(l);
+    const isCitationish = (l: string) =>
+      /[“"']/.test(l) ||
+      /\b(19|20)\d{2}\b/.test(l) ||
+      /\b(?:s\.|pp?\.)\s*\d+/i.test(l) ||
+      /\bet al\.\b/i.test(l) ||
+      /^[A-ZÆØÅ][^\n]{1,40}:\s+/.test(l);
+
+    const isShortContinuationProse = (l: string) =>
+      l.length <= 45 && /^[a-zæøå(,]/.test(l);
+
+    const looksLikeContinuation = (l: string) =>
+      isBulletish(l) || isPrefixedNote(l) || isCitationish(l) || isShortContinuationProse(l);
+
+    const leadAllContinuation = lead.every(looksLikeContinuation);
+    const leadHasHeaderish = lead.some((l) => looksLikeSession(l) || looksLikeEvent(l));
+
+    if (leadAllContinuation && !leadHasHeaderish) {
+      effectiveNonWeekLines = effectiveNonWeekLines.slice(firstDateIdx);
+    }
+  }
+}
+
+const headerLine = effectiveNonWeekLines[0];
+const dateSourceLine =
+  effectiveNonWeekLines.find((line) => isDateLine(line)) ?? headerLine;
+const date = extractDateFromLine(dateSourceLine) ?? "";
+
+const remainingLines = effectiveNonWeekLines.slice(1);
+const bodyJoined = remainingLines.join("\n").trim();
 
   const hasSessionMarkers =
     /pensum|litteratur|readings?:|opgave|assignment|forbered|tema|emne|øvelse|genstand|supplerende|obs/i
@@ -236,19 +271,37 @@ function localParseSegment(segment: string): CourseItem[] {
     /^(?<day>(mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag))\s+(?<rest>[\s\S]*)$/i,
   );
 
-  if (auCompactMatch?.groups?.rest && parseHeaderAsContent) {
-    const extractedDate = extractDateFromLine(segment) ?? "";
-    const afterDate = extractedDate
-      ? normalizeWhitespace(segment.replace(extractedDate, "")).trim()
-      : normalizeWhitespace(auCompactMatch.groups.rest.trim());
+  if (auCompactMatch?.groups?.rest && (parseHeaderAsContent || remainingLines.length === 0)) {
+  const extractedDate = extractDateFromLine(segment) ?? "";
+  const afterDateRaw = extractedDate
+    ? normalizeWhitespace(segment.replace(extractedDate, "")).trim()
+    : normalizeWhitespace(auCompactMatch.groups.rest.trim());
 
-    const parts = afterDate
-      .split(/,\s*/)
-      .map((p) => p.trim())
-      .filter(Boolean);
+  const secondDateAnchorRe =
+    /\b(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\b\s+(?:(?:d\.|den)\s*)?\d{1,2}\.?\s*(?:januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december|jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)\b\s*(?=[:\-–]|$)/gi;
 
-    let topic = parts[0] ?? afterDate;
-    topic = topic.replace(/^\s*[:\-–,]+\s*/, "").trim();
+  const secondAnchor = secondDateAnchorRe.exec(afterDateRaw);
+  const afterDate =
+    secondAnchor && typeof secondAnchor.index === "number" && secondAnchor.index > 0
+      ? afterDateRaw.slice(0, secondAnchor.index).trim()
+      : afterDateRaw;
+
+const topicBoundaryRe =
+  /(?:(?:^|[\s,;])(?:•||‣|∙)\s+)|(?:\b(?:genstande?|supplerende|obs)\b\s*(?::|,|[-–])?)/i;
+
+const boundaryMatch = topicBoundaryRe.exec(afterDate);
+const boundaryIdx =
+  boundaryMatch && typeof boundaryMatch.index === "number" ? boundaryMatch.index : -1;
+
+const head = boundaryIdx > 0 ? afterDate.slice(0, boundaryIdx).trim() : afterDate.trim();
+const tail = boundaryIdx > 0 ? afterDate.slice(boundaryIdx).trim() : "";
+
+const parts = [head, ...tail.split(/,\s*/)]
+  .map((p) => p.trim())
+  .filter(Boolean);
+
+let topic = parts[0] ?? afterDate;
+topic = topic.replace(/^\s*[:\-–,]+\s*/, "").trim();
 
     const readings: string[] = [];
     const assignmentParts: string[] = [];
@@ -298,12 +351,14 @@ function localParseSegment(segment: string): CourseItem[] {
     };
 
     const pushReadingsAu = (arr: string[], s: string) => {
-      const cleaned = stripBullet(s);
-      if (!cleaned) return;
-      if (assignmentMarkerRe.test(cleaned)) return;
-      if (looksLikeEventLine(cleaned)) return;
-      arr.push(cleaned);
-    };
+  for (const chunk of s.split(/\s*(?:•||‣|∙)\s*/)) {
+    const cleaned = stripBullet(chunk);
+    if (!cleaned) continue;
+    if (assignmentMarkerRe.test(cleaned)) continue;
+    if (looksLikeEventLine(cleaned)) continue;
+    arr.push(cleaned);
+  }
+};
 
     let inNotes = false;
     for (const p of parts.slice(1)) {
@@ -415,7 +470,68 @@ function localParseSegment(segment: string): CourseItem[] {
     !genstandLabelRe.test(s) &&
     !notesLabelRe.test(s);
 
-  let topic = headerLine;
+    // If we extracted the date from a later real date line, ensure fallback topic/header parsing
+  // starts at that date line (but only when the lead clearly looks like continuation).
+    // If we extracted the date from a later real date line, ensure fallback topic/header parsing
+  // starts at that date line (but only when the lead clearly looks like continuation).
+  let fallbackLines = effectiveNonWeekLines;
+
+  const dateSourceIdx = effectiveNonWeekLines.findIndex((l) => l === dateSourceLine);
+  if (dateSourceIdx > 0 && date) {
+    const lead = effectiveNonWeekLines.slice(0, dateSourceIdx);
+
+    const isBulletishLead = (l: string) => /^(?:[-*•‣∙]\s*|\d+\.\s+)/.test(l);
+    const isNoteishLead = (l: string) => /^(?:supplerende|obs)\b[:.!]?\s*/i.test(l);
+    const isCitationishLead = (l: string) =>
+      /[“"']/.test(l) ||
+      /\b(19|20)\d{2}\b/.test(l) ||
+      /\b(?:s\.|pp?\.)\s*\d+/i.test(l) ||
+      /\bet al\.\b/i.test(l) ||
+      /^[A-ZÆØÅ][^:]{1,40}:\s+\S+/.test(l);
+
+    const isShortContinuationProse = (l: string) =>
+      l.length <= 45 && /^[a-zæøå(,]/.test(l);
+
+    const isClearlyNotSessionStart = (l: string) => {
+      const t = l.trim();
+      if (!t) return true;
+      if (isDateLine(t)) return false;
+      if (looksLikeEventLine(t)) return false;
+      if (looksLikeSession(t) || looksLikeEvent(t)) return false;
+      return true;
+    };
+
+    const looksLikeContinuationLead = (l: string) =>
+      isBulletishLead(l) ||
+      isNoteishLead(l) ||
+      isCitationishLead(l) ||
+      isShortContinuationProse(l) ||
+      isClearlyNotSessionStart(l);
+
+    const leadAllContinuation = lead.every(looksLikeContinuationLead);
+
+    // Don't let label-ish lines (e.g. "Litteratur:", "Pensum:", "Opgave:", "Obs:")
+    // count as a "headerish" blocker for trimming to the later real date.
+    const isLabelOnlyLine = (l: string) =>
+      /^(?:pensum|litteratur|reading|readings|tekst|opgave|assignment|forbered|prepare|genstande?|obs|supplerende)\b\s*(?::|,|[-–])?/i
+        .test(l.trim());
+
+    const leadHasHeaderish = lead.some((l) => {
+      const t = l.trim();
+      if (!t) return false;
+      if (isLabelOnlyLine(t)) return false;
+      return looksLikeSession(t) || looksLikeEvent(t);
+    });
+
+    if (leadAllContinuation && !leadHasHeaderish) {
+      fallbackLines = effectiveNonWeekLines.slice(dateSourceIdx);
+    }
+  }
+
+  const fallbackHeaderLine = fallbackLines[0] ?? headerLine;
+  const fallbackRemainingLines = fallbackLines.slice(1);
+
+  let topic = fallbackHeaderLine;
   if (parseHeaderAsContent) {
     const leadingDateReFallback =
       /^\s*(?:(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\s+)?(?:d\.|den)?\s*\d{1,2}\.?\s*(?:jan(?:uar)?|feb(?:ruar)?|mar(?:ts)?|apr(?:il)?|maj|jun(?:i)?|jul(?:i)?|aug(?:ust)?|sep(?:tember)?|okt(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\s*:?-?\s*/i;
@@ -443,7 +559,7 @@ function localParseSegment(segment: string): CourseItem[] {
     }
   };
 
-  for (const line of remainingLines) {
+  for (const line of fallbackRemainingLines) {
     if (!line.trim()) continue;
 
     const readingLabelMatch = line.match(readingsLabelRe);
