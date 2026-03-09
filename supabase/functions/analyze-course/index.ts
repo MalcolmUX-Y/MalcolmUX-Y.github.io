@@ -21,6 +21,7 @@ type SessionItem = {
   readings: string[];
   assignment: string;
   notes: string;
+  sourceText: string;
 };
 
 type EventItem = {
@@ -619,13 +620,14 @@ function normalizeItem(raw: unknown): CourseItem | null {
 
   if (type === "session") {
     const normalized: SessionItem = {
-      type: "session",
-      date: toStringValue(item.date),
-      topic: toStringValue(item.topic),
-      readings: toStringArray(item.readings),
-      assignment: toStringValue(item.assignment),
-      notes: toStringValue(item.notes),
-    };
+  type: "session",
+  date: toStringValue(item.date),
+  topic: toStringValue(item.topic),
+  readings: toStringArray(item.readings),
+  assignment: toStringValue(item.assignment),
+  notes: toStringValue(item.notes),
+  sourceText: toStringValue(item.sourceText),
+};
 
     const hasData =
       !!normalized.date ||
@@ -699,13 +701,14 @@ function cleanAndMergeItems(items: CourseItem[]): CourseItem[] {
 
       if (!sessionMap.has(key)) {
         sessionMap.set(key, {
-          type: "session",
-          date: item.date,
-          topic: item.topic,
-          readings: [...new Set(item.readings.filter(Boolean))],
-          assignment: item.assignment,
-          notes: item.notes,
-        });
+  type: "session",
+  date: item.date,
+  topic: item.topic,
+  readings: [...new Set(item.readings.filter(Boolean))],
+  assignment: item.assignment,
+  notes: item.notes,
+  sourceText: item.sourceText,
+});
       }
 
       continue;
