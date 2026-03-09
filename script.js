@@ -384,17 +384,25 @@ function parseStructuredSessionText(entry) {
 
   for (const line of lines) {
     if (!rawDate) {
-      const dateLabelMatch = line.match(/^(date|dato)\s*[:\-]\s*(.+)$/i);
-      if (dateLabelMatch) {
-        rawDate = dateLabelMatch[2].trim();
-        continue;
-      }
+  const dateLabelMatch = line.match(/^(date|dato)\s*[:\-]\s*(.+)$/i);
+  if (dateLabelMatch) {
+    rawDate = dateLabelMatch[2].trim();
+    continue;
+  }
 
-      const directDateMatch = line.match(/(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}|\d{4}-\d{2}-\d{2})/);
-      if (directDateMatch) {
-        rawDate = directDateMatch[1].trim();
-      }
-    }
+  const danishTextDateMatch = line.match(
+    /\b(?:(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\b\s+)?(?:(?:d\.|den)\s*)?\d{1,2}\.?\s+(?:januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december)\b/i
+  );
+  if (danishTextDateMatch) {
+    rawDate = danishTextDateMatch[0].trim();
+    continue;
+  }
+
+  const directDateMatch = line.match(/\b(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}|\d{4}-\d{2}-\d{2})\b/);
+  if (directDateMatch) {
+    rawDate = directDateMatch[1].trim();
+  }
+}
 
     if (!topic) {
       const topicMatch = line.match(/^(topic|emne|title|titel)\s*[:\-]\s*(.+)$/i);
