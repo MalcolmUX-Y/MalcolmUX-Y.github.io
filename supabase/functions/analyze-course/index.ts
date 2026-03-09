@@ -269,7 +269,23 @@ if (firstDateIdx > 0) {
     }
   }
 }
-const headerLine = effectiveNonWeekLines[0];
+const headerLine =
+  effectiveNonWeekLines.find((l) => {
+    const t = l.trim();
+
+    if (!t) return false;
+
+    if (/^(?:[-*•‣∙]\s*)/.test(t)) return false;
+
+    if (/^(?:supplerende|obs|genstande?|pensum|litteratur)\b/i.test(t)) return false;
+
+    if (
+      /^(?:[A-ZÆØÅ]\.\s*){1,3}[A-ZÆØÅ][A-Za-zÆØÅæøå\-]+(?:\s+[A-ZÆØÅ][A-Za-zÆØÅæøå\-]+){0,3}\s*[:,]/.test(t)
+    )
+      return false;
+
+    return true;
+  }) || effectiveNonWeekLines[0];
 const dateSourceLine =
   effectiveNonWeekLines.find((line) => isDateLine(line)) ?? headerLine;
 const date = extractDateFromLine(dateSourceLine) ?? "";
