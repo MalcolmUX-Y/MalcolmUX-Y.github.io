@@ -459,6 +459,80 @@ textarea {
     max-width: 100%;
   }
 }
+/* === Upload-step layout cleanup === */
+
+/* remove debug */
 .screen-card {
-  border: 4px solid red !important;
+  border: 0 !important;
+}
+
+/* make the main step container feel open, not dashboard-like */
+.screen-card {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 20px 0 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* calmer text hierarchy */
+.screen-card h2 {
+  margin: 0;
+}
+
+.screen-text {
+  margin: 0;
+  max-width: 68ch;
+  color: var(--muted);
+}
+
+/* upload area should not feel like a boxed dashboard module */
+.upload-box {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+/* preview is the primary object */
+.file-preview {
+  margin-top: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.pdf-preview {
+  margin-top: 0;
+}
+
+.pdf-preview iframe {
+  width: 100%;
+  min-height: 500px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: white;
+  box-shadow: none;
+}
+
+/* lighter step indicator */
+.step-pill {
+  background: transparent;
+  box-shadow: none;
+}
+
+.step-pill.active {
+  box-shadow: none;
+}
+
+/* slightly more breathing room in shell */
+.app-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 56px 24px 72px;
 }
