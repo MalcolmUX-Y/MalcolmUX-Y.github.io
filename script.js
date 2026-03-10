@@ -326,11 +326,10 @@ function mapItemsToUiModel(items) {
         date: isoDate || parsedFromText.date,
         rawDate: entry.date || parsedFromText.rawDate || "",
         topic: entry.topic || parsedFromText.topic || "Untitled session",
-        readings: (
+        readings:
           Array.isArray(entry.readings) && entry.readings.length
             ? entry.readings
-            : parsedFromText.readings
-        ).filter((r) => typeof r === "string" && r.trim()),
+            : parsedFromText.readings,
         assignment: entry.assignment || "",
         notes: entry.notes || parsedFromText.notes,
         sourceText,
@@ -343,7 +342,7 @@ function mapItemsToUiModel(items) {
       date: isoDate || parsedFromText.date,
       rawDate: entry.date || parsedFromText.rawDate || "",
       topic: entry.title || parsedFromText.topic || "Untitled event",
-      readings: parsedFromText.readings.filter((r) => typeof r === "string" && r.trim()),
+      readings: parsedFromText.readings,
       assignment: "",
       notes: entry.notes || parsedFromText.notes,
       sourceText,
