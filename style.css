@@ -368,7 +368,7 @@ select:focus {
 
 textarea {
   resize: vertical;
-  min-height: 88px;
+  min-height: 72px;
 }
 
 /* --- Step 3: Review grid ----------------------------------- */
@@ -383,23 +383,13 @@ textarea {
   grid-template-columns: 1fr;
 }
 
-/* Session grid: date narrow, topic+readings side by side below */
+/* Session grid: date narrow, readings wide */
 .review-grid-session {
   display: grid;
-  grid-template-columns: 160px 1fr 1fr;
+  grid-template-columns: 160px 1fr;
   gap: 12px 20px;
   align-items: start;
   margin-bottom: 16px;
-}
-
-/* Preparation row spans full width */
-.review-grid-session label:last-of-type {
-  grid-column: 1 / -1;
-}
-
-/* Shrink the preparation textarea — mostly empty */
-.review-grid-session label:last-of-type textarea {
-  min-height: 56px;
 }
 
 /* --- Buttons ----------------------------------------------- */
