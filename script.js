@@ -714,15 +714,8 @@ function renderReviewStep() {
         <p class="screen-label">Step 3</p>
         <h2>Review extracted structure</h2>
         <p class="screen-text">
-          Verify what was extracted. Correct any dates or readings before confirming.
+          Review what was extracted from your document.
         </p>
-
-        <div class="review-grid review-grid-single">
-          <label>
-            <span>Document title</span>
-            <input id="reviewTitle" type="text" value="${escapeHtml(data?.title || "")}" />
-          </label>
-        </div>
 
         <div class="weeks-preview">
           <h3>Extracted items</h3>
@@ -742,28 +735,6 @@ function renderReviewStep() {
   });
 
   document.getElementById("saveReviewBtn").addEventListener("click", () => {
-    const reviewedWeeks = (state.extractedData?.weeks || []).map((week, index) => {
-      const prefix = `session-${index}`;
-      const readingsValue = document.getElementById(`${prefix}-readings`).value;
-
-      return {
-        ...week,
-        date: document.getElementById(`${prefix}-date`).value,
-        topic: document.getElementById(`${prefix}-topic`).value.trim(),
-        readings: readingsValue
-          .split("\n")
-          .map((item) => item.trim())
-          .filter(Boolean),
-        notes: document.getElementById(`${prefix}-notes`).value.trim(),
-      };
-    });
-
-    state.extractedData = {
-      ...state.extractedData,
-      title: document.getElementById("reviewTitle").value.trim(),
-      weeks: reviewedWeeks,
-    };
-
     nextStep();
   });
 }
@@ -774,8 +745,7 @@ function renderSessionReviewCards(items) {
   }
 
   return `<div class="session-card-list">${items
-    .map((item, index) => {
-      const prefix = `session-${index}`;
+    .map((item) => {
       const kindLabel = item.kind === "event" ? "Event" : "Session";
       const dateLabel = item.date ? toDisplayDate(item.date) : item.rawDate || "No date";
       const topicLabel = item.topic || "Untitled topic";
@@ -787,21 +757,11 @@ function renderSessionReviewCards(items) {
             <h4>${escapeHtml(`${dateLabel} — ${topicLabel}`)}</h4>
           </div>
 
-          <div class="review-grid review-grid-session">
-            <label>
-              <span>Date</span>
-              <input id="${prefix}-date" type="date" value="${escapeHtml(item.date || "")}" />
-            </label>
-
-            <label>
-              <span>Readings</span>
-              <textarea id="${prefix}-readings">${escapeHtml((item.readings || []).join("\n"))}</textarea>
-            </label>
-          </div>
-
-          <!-- Hidden fields preserved for data integrity -->
-          <input id="${prefix}-topic" type="hidden" value="${escapeHtml(item.topic || "")}" />
-          <textarea id="${prefix}-notes" class="hidden">${escapeHtml(item.notes || "")}</textarea>
+          ${item.readings?.length ? `
+            <p class="muted" style="font-size:13px; margin:0;">
+              ${escapeHtml(item.readings.join(" · "))}
+            </p>
+          ` : ""}
 
           <details class="source-text-toggle">
             <summary>Source text</summary>
