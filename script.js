@@ -68,7 +68,7 @@ function previousStep() {
 }
 
 function renderStepIndicator() {
-  const labels = ["Upload", "Analyze", "Review", "Confirm", "Dashboard"];
+  const labels = ["Upload", "Parse", "Review", "Confirm", "Workflow"];
 
   stepIndicator.innerHTML = labels
     .map((label, index) => {
@@ -453,7 +453,7 @@ function renderWeeksList(items, emptyText) {
       (item) => `
         <div class="week-row">
           <div class="week-row-header">
-            <strong>${escapeHtml(item.kind === "event" ? "Event" : "Session")} ${item.week}</strong>
+            <strong>${escapeHtml(item.kind === "event" ? "Event" : "Item")} ${item.week}</strong>
             <span class="muted">${escapeHtml(item.date ? toDisplayDate(item.date) : item.rawDate || "")}</span>
           </div>
           <div><strong>${escapeHtml(item.topic || "-")}</strong></div>
@@ -483,7 +483,7 @@ function getAnalysisStatusMarkup() {
     return `
       <div class="analysis-indicator">
         <div class="spinner"></div>
-        <span class="muted">AI analyzing document...</span>
+        <span class="muted">Parsing document...</span>
       </div>
     `;
   }
@@ -510,7 +510,7 @@ function getAnalysisStatusMarkup() {
   return `
     <div class="analysis-indicator">
       <span aria-hidden="true">•</span>
-      <span class="muted">Waiting for analysis</span>
+      <span class="muted">Ready to parse</span>
     </div>
   `;
 }
@@ -520,9 +520,9 @@ function renderUploadStep() {
     <section class="screen">
       <div class="screen-card">
         <p class="screen-label">Step 1</p>
-        <h2>Upload course document</h2>
+        <h2>Upload document</h2>
         <p class="screen-text">
-          Upload a PDF that should frame the AI analysis and the later study structure.
+          Upload a document to extract its structure into a reviewable workflow.
         </p>
 
         <div class="upload-box">
@@ -644,18 +644,18 @@ function renderAnalyzeStep() {
     <section class="screen">
       <div class="screen-card">
         <p class="screen-label">Step 2</p>
-        <h2>Analyze document</h2>
+        <h2>Parse document</h2>
         <p class="screen-text">
-          PDF'en læses, tekst udtrækkes og sendes til AI-analyse.
+          The document is read, segmented and parsed into structured items.
         </p>
 
         <div class="status-box">
           <p><strong>Fil:</strong> ${state.documentFile ? escapeHtml(state.documentFile.name) : "Ingen fil valgt"}</p>
           <p><strong>Status:</strong> ${
             state.analysisStatus === "idle"
-              ? "Waiting"
+              ? "Ready"
               : state.analysisStatus === "running"
-              ? "Running"
+              ? "Parsing"
               : state.analysisStatus === "success"
               ? "Completed"
               : "Failed"
@@ -671,7 +671,7 @@ function renderAnalyzeStep() {
           <button class="btn btn-primary" id="runAnalysisBtn" ${
             !state.documentFile || state.analysisStatus === "running" ? "disabled" : ""
           }>
-            ${state.analysisStatus === "running" ? "Running..." : "Run analysis"}
+            ${state.analysisStatus === "running" ? "Parsing..." : "Run parser"}
           </button>
         </div>
       </div>
@@ -694,20 +694,20 @@ function renderReviewStep() {
     <section class="screen">
       <div class="screen-card">
         <p class="screen-label">Step 3</p>
-        <h2>Review extracted course info</h2>
+        <h2>Review extracted structure</h2>
         <p class="screen-text">
-          Gennemse og ret det AI'en har fundet, før planen bekræftes.
+          Verify what was extracted. Correct any dates or readings before confirming.
         </p>
 
         <div class="review-grid review-grid-single">
           <label>
-            <span>Course title</span>
+            <span>Document title</span>
             <input id="reviewTitle" type="text" value="${escapeHtml(data?.title || "")}" />
           </label>
         </div>
 
         <div class="weeks-preview">
-          <h3>Extracted sessions and events</h3>
+          <h3>Extracted items</h3>
           ${renderSessionReviewCards(data?.weeks)}
         </div>
 
@@ -752,7 +752,7 @@ function renderReviewStep() {
 
 function renderSessionReviewCards(items) {
   if (!items?.length) {
-    return `<p class="muted">Ingen sessions eller events fundet endnu</p>`;
+    return `<p class="muted">No items extracted yet</p>`;
   }
 
   return `<div class="session-card-list">${items
@@ -802,19 +802,19 @@ function renderConfirmStep() {
     <section class="screen">
       <div class="screen-card">
         <p class="screen-label">Step 4</p>
-        <h2>Confirm and generate plan</h2>
+        <h2>Confirm and generate workflow</h2>
         <p class="screen-text">
-          Bekræft den udtrukne struktur før dashboardet genereres.
+          Confirm the extracted structure before the workflow is generated.
         </p>
 
         <div class="summary-box">
-          <p><strong>Course:</strong> ${escapeHtml(data?.title || "-")}</p>
-          <p><strong>Items:</strong> ${data?.weeks?.length || 0}</p>
+          <p><strong>Document:</strong> ${escapeHtml(data?.title || "-")}</p>
+          <p><strong>Extracted items:</strong> ${data?.weeks?.length || 0}</p>
         </div>
 
         <div class="actions">
           <button class="btn btn-secondary" id="backToReviewBtn">Back</button>
-          <button class="btn btn-primary" id="confirmPlanBtn">Generate dashboard</button>
+          <button class="btn btn-primary" id="confirmPlanBtn">Generate workflow</button>
         </div>
       </div>
     </section>
@@ -841,18 +841,18 @@ function renderDashboardStep() {
     <section class="screen">
       <div class="screen-card">
         <p class="screen-label">Step 5</p>
-        <h2>Dashboard</h2>
+        <h2>Workflow</h2>
         <p class="screen-text">
-          Dette dashboard er nu genereret på baggrund af rigtig dokumentanalyse.
+          Generated from your document. Review the structured output below.
         </p>
 
         <div class="dashboard-card">
-          <h3>${escapeHtml(plan?.title || "Untitled course")}</h3>
-          <p><strong>Planned sessions/events:</strong> ${plan?.weeks?.length || 0}</p>
+          <h3>${escapeHtml(plan?.title || "Untitled document")}</h3>
+          <p><strong>Extracted items:</strong> ${plan?.weeks?.length || 0}</p>
         </div>
 
         <div class="weeks-preview">
-          <h3>Sessions and events</h3>
+          <h3>Extracted items</h3>
           ${renderWeeksList(plan?.weeks, "Ingen items endnu")}
         </div>
 
