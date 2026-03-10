@@ -162,14 +162,14 @@ h1 {
 
 input[type="file"] {
   display: block;
-  width: 100%;
-  padding: 44px 24px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 28px 32px;
   border: 1.5px dashed rgba(77, 141, 255, 0.3);
   border-radius: var(--radius-lg);
   background: rgba(77, 141, 255, 0.03);
-  color: var(--muted);
-  font: inherit;
-  font-size: 13px;
+  color: transparent;
+  font-size: 0;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }
@@ -190,7 +190,7 @@ input[type="file"]::file-selector-button {
   font-weight: 500;
   padding: 9px 16px;
   cursor: pointer;
-  margin-right: 14px;
+  margin-right: 0;
   transition: background 0.15s;
 }
 
