@@ -240,16 +240,91 @@ input[type="file"]::file-selector-button:hover {
   gap: 16px;
 }
 
-/* --- Functional panels (status, summary, dashboard-card) --- */
-/* These are the only elements that should feel like panels */
-.status-box,
-.summary-box,
-.dashboard-card,
+/* --- Step 2: Status box — quiet confirmation, not a system log --- */
+.status-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.status-box p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.status-box p strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.analysis-indicator {
+  margin-top: 4px;
+}
+
+/* --- Step 4: Summary box — inline text, no card --- */
+.summary-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.summary-box p {
+  margin: 0;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.summary-box p strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* --- Step 5: Dashboard card — title block, not a panel --- */
+.dashboard-card {
+  padding: 0 0 24px 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.dashboard-card h3 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 6px;
+  color: var(--text);
+}
+
+.dashboard-card p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* --- Step 5: Weeks preview — open list, no box --- */
 .weeks-preview {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.weeks-preview h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  font-weight: 500;
+  margin: 0 0 20px;
 }
 
 /* --- Form elements ----------------------------------------- */
@@ -427,9 +502,9 @@ textarea {
   color: var(--muted);
 }
 
-/* --- Week rows (dashboard step) ---------------------------- */
+/* --- Week rows (step 5) ------------------------------------ */
 .week-row {
-  padding: 14px 0;
+  padding: 20px 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -440,13 +515,36 @@ textarea {
 .week-row-header {
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
   gap: 12px;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
+}
+
+.week-row-header strong {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.week-row-header span.muted {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.week-row > div > strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
 }
 
 .week-row-meta {
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: 13px;
+  color: var(--muted);
+  line-height: 1.55;
 }
 
 /* --- Analysis status --------------------------------------- */
@@ -454,8 +552,9 @@ textarea {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 10px;
+  margin-top: 0;
   font-size: 14px;
+  color: var(--muted);
 }
 
 .spinner {
