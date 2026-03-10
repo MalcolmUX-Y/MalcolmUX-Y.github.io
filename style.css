@@ -400,3 +400,62 @@ textarea {
     font-size: 34px;
   }
 }
+/* === Focused, document-first Step container (overrides) === */
+
+.screen-card {
+  /* narrower measure + calmer container */
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 34px 34px 30px;
+
+  /* reduce dashboard-card feel */
+  background: rgba(16, 29, 54, 0.55);
+  box-shadow: none;
+
+  /* guided linear flow */
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.screen-card h2 {
+  margin-bottom: 0; /* rely on container gap */
+}
+
+.screen-text {
+  margin-bottom: 0; /* rely on container gap */
+  color: rgba(167, 181, 207, 0.92);
+  max-width: 70ch;
+}
+
+/* Make upload the primary focus within the step */
+.upload-box {
+  margin-bottom: 0; /* rely on container gap */
+  padding: 22px;
+  border-radius: 16px;
+
+  /* slightly elevated but not "cardy" */
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(77, 141, 255, 0.35);
+  box-shadow: 0 0 0 3px rgba(77, 141, 255, 0.10);
+}
+
+/* De-emphasize other boxes when stacked in the same step */
+.status-box,
+.summary-box,
+.dashboard-card,
+.weeks-preview {
+  margin-bottom: 0; /* rely on container gap */
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Responsive: keep the "document" measure + breathing room */
+@media (max-width: 640px) {
+  .screen-card {
+    padding: 26px 18px 22px;
+  }
+
+  .screen-text {
+    max-width: 100%;
+  }
+}
