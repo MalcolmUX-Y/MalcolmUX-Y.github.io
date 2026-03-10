@@ -118,7 +118,6 @@ async function extractPdfText(file) {
     const pageText = textContent.items
       .map((item) => ("str" in item ? item.str : ""))
       .join(" ")
-      .replace(/\|/g, "")
       .replace(/\s+/g, " ")
       .trim();
 
