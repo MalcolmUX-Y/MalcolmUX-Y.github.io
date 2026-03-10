@@ -16,6 +16,7 @@ const state = {
   analysisError: "",
   rawItems: [],
   segmentCount: 0,
+  inferredYear: "",
 };
 
 const TOTAL_STEPS = 5;
@@ -102,12 +103,20 @@ function ensurePdfJsReady() {
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
   }
 }
-
 async function extractPdfText(file) {
   ensurePdfJsReady();
 
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+  // Try PDF metadata first
+  let inferredYear = "";
+  try {
+    const meta = await pdf.getMetadata();
+    const metaDate = meta?.info?.CreationDate || meta?.info?.ModDate || "";
+    const metaYearMatch = metaDate.match(/\b(20\d{2})\b/);
+    if (metaYearMatch) inferredYear = metaYearMatch[1];
+  } catch (_) {}
 
   const pageTexts = [];
 
@@ -131,6 +140,14 @@ async function extractPdfText(file) {
   if (!fullText) {
     throw new Error("PDF'en blev læst, men der blev ikke fundet nogen tekst.");
   }
+
+  // Fall back to scanning text for first plausible year
+  if (!inferredYear) {
+    const textYearMatch = fullText.match(/\b(20\d{2})\b/);
+    if (textYearMatch) inferredYear = textYearMatch[1];
+  }
+
+  state.inferredYear = inferredYear;
 
   return fullText;
 }
@@ -214,15 +231,16 @@ function normalizeDateString(raw) {
     const month = danishMonths[dkMatch[2].toLowerCase()];
     const year = dkMatch[3];
 
-    if (!year) {
-      return ""; // fallback to rawDate in UI
+    if (!year && !state.inferredYear) {
+      return "";
     }
+    const resolvedYear = year || state.inferredYear;
 
     if (!month || !(dayNum >= 1 && dayNum <= 31)) {
       return "";
     }
 
-    return `${year}-${month}-${String(dayNum).padStart(2, "0")}`;
+    return `${resolvedYear}-${month}-${String(dayNum).padStart(2, "0")}`;
   }
 
   const numMatch = cleaned.match(/\b(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})\b/);
