@@ -776,20 +776,14 @@ function renderSessionReviewCards(items) {
             </label>
 
             <label>
-              <span>Topic</span>
-              <input id="${prefix}-topic" type="text" value="${escapeHtml(item.topic || "")}" />
-            </label>
-
-            <label>
-              <span>Readings (one per line)</span>
+              <span>Readings</span>
               <textarea id="${prefix}-readings">${escapeHtml((item.readings || []).join("\n"))}</textarea>
             </label>
-
-            <label>
-              <span>Preparation / Tasks</span>
-              <textarea id="${prefix}-notes">${escapeHtml(item.notes || "")}</textarea>
-            </label>
           </div>
+
+          <!-- Hidden fields preserved for data integrity -->
+          <input id="${prefix}-topic" type="hidden" value="${escapeHtml(item.topic || "")}" />
+          <textarea id="${prefix}-notes" class="hidden">${escapeHtml(item.notes || "")}</textarea>
 
           <details class="source-text-toggle">
             <summary>Source text</summary>
