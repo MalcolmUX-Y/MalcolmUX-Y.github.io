@@ -2,8 +2,8 @@
 // auth.js — Supabase login
 // ============================================================
 
-const SUPABASE_URL = "DIN_SUPABASE_URL";
-const SUPABASE_ANON_KEY = "DIN_ANON_KEY";
+const SUPABASE_URL = "https://flecimbpfuzlflyvgjrk.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsZWNpbWJwZnV6bGZseXZnanJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Mjg4MTksImV4cCI6MjA4ODQwNDgxOX0.Wcifm_Wjjm1olJefkzOhP2_ZBuDVkqMIB2gGIGpYpZQ";
 
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
