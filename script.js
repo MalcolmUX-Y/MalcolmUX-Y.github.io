@@ -109,13 +109,13 @@ async function extractPdfText(file) {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-  // Try PDF metadata first
   let inferredYear = "";
+  let metaYear = "";
   try {
     const meta = await pdf.getMetadata();
     const metaDate = meta?.info?.CreationDate || meta?.info?.ModDate || "";
     const metaYearMatch = metaDate.match(/\b(20\d{2})\b/);
-    if (metaYearMatch) inferredYear = metaYearMatch[1];
+    if (metaYearMatch) metaYear = metaYearMatch[1];
   } catch (_) {}
 
   const pageTexts = [];
@@ -141,11 +141,9 @@ async function extractPdfText(file) {
     throw new Error("PDF'en blev læst, men der blev ikke fundet nogen tekst.");
   }
 
-  // Fall back to scanning text for first plausible year
-  if (!inferredYear) {
-    const textYearMatch = fullText.match(/\b(20\d{2})\b/);
-    if (textYearMatch) inferredYear = textYearMatch[1];
-  }
+  // Text wins — metadata is fallback
+  const textYearMatch = fullText.match(/\b(20\d{2})\b/);
+  inferredYear = textYearMatch ? textYearMatch[1] : metaYear;
 
   state.inferredYear = inferredYear;
 
