@@ -961,4 +961,8 @@ function renderApp() {
   }
 }
 
-renderApp();
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  renderApp();
+})();
