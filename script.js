@@ -187,9 +187,23 @@ function normalizeDateString(raw) {
     return "";
   }
 
-  // Already ISO
+// Already ISO
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return value;
+  }
+
+  // Format: "den 5.2." / "torsdag den 27.2."
+  const shortDkMatch = value.match(
+    /\b(?:(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\s+)?(?:d\.|den)\s*(\d{1,2})\.(\d{1,2})\.?/i
+  );
+  if (shortDkMatch) {
+    const dayNum = Number(shortDkMatch[1]);
+    const monthNum = Number(shortDkMatch[2]);
+    if (!(dayNum >= 1 && dayNum <= 31) || !(monthNum >= 1 && monthNum <= 12)) {
+      return "";
+    }
+    if (!state.inferredYear) return "";
+    return `${state.inferredYear}-${String(monthNum).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
   }
 
   // Remove time ranges like "13.00-15.00"
