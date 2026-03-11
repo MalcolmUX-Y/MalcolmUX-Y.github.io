@@ -9,6 +9,8 @@ const state = {
   currentStep: 1,
   documentFile: null,
   pdfPreviewUrl: "",
+  docxPreviewHtml: "",
+  docxPreviewStatus: "idle", // idle | loading | ready | error
   extractedData: null,
   confirmedPlan: null,
   analysisStatus: "idle", // idle | running | success | error
@@ -40,6 +42,8 @@ function resetFlowState() {
   state.currentStep = 1;
   state.documentFile = null;
   state.pdfPreviewUrl = "";
+  state.docxPreviewHtml = "";
+  state.docxPreviewStatus = "idle";
   state.extractedData = null;
   state.confirmedPlan = null;
   state.analysisStatus = "idle";
@@ -88,6 +92,57 @@ function renderStepIndicator() {
       `;
     })
     .join("");
+}
+
+function getFileType(file) {
+  if (!file) return null;
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".pdf") || file.type === "application/pdf") return "pdf";
+  if (
+    name.endsWith(".docx") ||
+    file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  )
+    return "docx";
+  return null;
+}
+
+async function extractDocxText(file) {
+  if (!window.mammoth) {
+    throw new Error("Mammoth.js mangler — DOCX kan ikke læses.");
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await window.mammoth.extractRawText({ arrayBuffer });
+
+  const text = result?.value?.trim();
+  if (!text) {
+    throw new Error("DOCX-filen blev læst, men der blev ikke fundet nogen tekst.");
+  }
+
+  const filenameYearMatch = file.name.match(/\b(20\d{2})\b/);
+  const filenameSeasonMatch = file.name.match(/\bF(\d{2})\b|\bE(\d{2})\b/i);
+  const filenameYear =
+    filenameYearMatch?.[1] ||
+    (filenameSeasonMatch ? `20${filenameSeasonMatch[1] ?? filenameSeasonMatch[2]}` : null);
+
+  const textYearMatch =
+    text.match(
+      /(?:mandag|tirsdag|onsdag|torsdag|fredag)[^.]{0,30}(?:januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december)[^\d]*(20\d{2})\b/i
+    ) ||
+    text.match(
+      /(?:januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december)\s+(20\d{2})\b/i
+    );
+
+  state.inferredYear = textYearMatch?.[1] || filenameYear || "";
+
+  return text;
+}
+
+async function extractDocumentText(file) {
+  const type = getFileType(file);
+  if (type === "pdf") return extractPdfText(file);
+  if (type === "docx") return extractDocxText(file);
+  throw new Error("Filformatet understøttes ikke. Upload en PDF eller DOCX.");
 }
 
 function ensurePdfJsReady() {
@@ -553,6 +608,65 @@ function getAnalysisStatusMarkup() {
 }
 
 function renderUploadStep() {
+  const fileType = getFileType(state.documentFile);
+
+  let previewMarkup = "";
+  if (state.documentFile) {
+    const fileLabel =
+      fileType === "docx"
+        ? "DOCX selected and ready for analysis"
+        : "PDF selected and ready for analysis";
+
+    let contentPreview = "";
+    if (fileType === "pdf" && state.pdfPreviewUrl) {
+      contentPreview = `
+        <div class="pdf-preview">
+          <p class="muted">Preview</p>
+          <iframe
+            title="PDF preview"
+            src="${state.pdfPreviewUrl}"
+            loading="lazy"
+          ></iframe>
+        </div>
+      `;
+    } else if (fileType === "docx") {
+      if (state.docxPreviewStatus === "loading") {
+        contentPreview = `
+          <div class="pdf-preview">
+            <p class="muted">Preview</p>
+            <div style="display:flex;align-items:center;gap:10px;min-height:120px;padding:24px;border:1px solid var(--border);border-radius:var(--radius-lg);">
+              <div class="spinner"></div>
+              <span class="muted">Genererer preview…</span>
+            </div>
+          </div>
+        `;
+      } else if (state.docxPreviewStatus === "ready" && state.docxPreviewHtml) {
+        contentPreview = `
+          <div class="pdf-preview">
+            <p class="muted">Preview</p>
+            <div style="width:100%;min-height:540px;max-height:540px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-lg);background:#fff;color:#111;padding:24px 28px;font-size:13px;line-height:1.6;box-sizing:border-box;">
+              ${state.docxPreviewHtml}
+            </div>
+          </div>
+        `;
+      } else if (state.docxPreviewStatus === "error") {
+        contentPreview = `<p class="muted" style="margin-top:4px;">Preview kunne ikke genereres, men filen kan stadig analyseres.</p>`;
+      }
+    }
+
+    previewMarkup = `
+      <div class="file-preview">
+        <div class="file-preview-main">
+          <strong>${escapeHtml(state.documentFile.name)}</strong>
+          <p class="muted">${fileLabel}</p>
+        </div>
+        ${contentPreview}
+      </div>
+    `;
+  } else {
+    previewMarkup = `<p class="muted">Ingen fil valgt endnu</p>`;
+  }
+
   app.innerHTML = `
     <section class="screen">
       <div class="screen-card">
@@ -563,34 +677,8 @@ function renderUploadStep() {
         </p>
 
         <div class="upload-box">
-          <input id="pdfInput" type="file" accept="application/pdf" />
-
-          ${
-            state.documentFile
-              ? `
-                <div class="file-preview">
-                  <div class="file-preview-main">
-                    <strong>${escapeHtml(state.documentFile.name)}</strong>
-                    <p class="muted">PDF selected and ready for analysis</p>
-                  </div>
-                  ${
-                    state.pdfPreviewUrl
-                      ? `
-                        <div class="pdf-preview">
-                          <p class="muted">Preview</p>
-                          <iframe
-                            title="PDF preview"
-                            src="${escapeHtml(state.pdfPreviewUrl)}"
-                            loading="lazy"
-                          ></iframe>
-                        </div>
-                      `
-                      : ""
-                  }
-                </div>
-              `
-              : `<p class="muted">Ingen fil valgt endnu</p>`
-          }
+          <input id="pdfInput" type="file" accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+          ${previewMarkup}
         </div>
 
         <div class="actions">
@@ -607,7 +695,7 @@ function renderUploadStep() {
   const pdfInput = document.getElementById("pdfInput");
   const uploadContinueBtn = document.getElementById("uploadContinueBtn");
 
-  pdfInput.addEventListener("change", (event) => {
+  pdfInput.addEventListener("change", async (event) => {
     const file = event.target.files?.[0] || null;
 
     if (state.pdfPreviewUrl) {
@@ -615,7 +703,9 @@ function renderUploadStep() {
     }
 
     state.documentFile = file;
-    state.pdfPreviewUrl = file ? URL.createObjectURL(file) : "";
+    state.pdfPreviewUrl = "";
+    state.docxPreviewHtml = "";
+    state.docxPreviewStatus = "idle";
     state.extractedData = null;
     state.confirmedPlan = null;
     state.analysisStatus = "idle";
@@ -623,7 +713,33 @@ function renderUploadStep() {
     state.rawItems = [];
     state.segmentCount = 0;
 
-    renderApp();
+    if (!file) {
+      renderApp();
+      return;
+    }
+
+    const type = getFileType(file);
+
+    if (type === "pdf") {
+      state.pdfPreviewUrl = URL.createObjectURL(file);
+      renderApp();
+    } else if (type === "docx") {
+      state.docxPreviewStatus = "loading";
+      renderApp();
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await window.mammoth.convertToHtml({ arrayBuffer });
+        state.docxPreviewHtml = result?.value || "";
+        state.docxPreviewStatus = "ready";
+      } catch (_) {
+        state.docxPreviewStatus = "error";
+      }
+
+      renderApp();
+    } else {
+      renderApp();
+    }
   });
 
   uploadContinueBtn.addEventListener("click", () => {
@@ -634,7 +750,7 @@ function renderUploadStep() {
 async function runDocumentAnalysis() {
   if (!state.documentFile) {
     state.analysisStatus = "error";
-    state.analysisError = "Ingen PDF valgt.";
+    state.analysisError = "Ingen fil valgt.";
     renderApp();
     return;
   }
@@ -644,7 +760,7 @@ async function runDocumentAnalysis() {
     state.analysisError = "";
     renderApp();
 
-    const extractedText = await extractPdfText(state.documentFile);
+    const extractedText = await extractDocumentText(state.documentFile);
     const analysisResult = await analyzeCourseText(extractedText);
 
     const items = Array.isArray(analysisResult?.items) ? analysisResult.items : [];
