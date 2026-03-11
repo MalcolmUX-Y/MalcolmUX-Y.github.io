@@ -145,7 +145,12 @@ async function extractPdfText(file) {
     fullText.match(/(?:mandag|tirsdag|onsdag|torsdag|fredag)[^.]{0,10}den\s+\d{1,2}\.\d{1,2}[^.]{0,10}(20\d{2})\b/i) ||
     fullText.match(/[Ss]emesterplan\s+\S*(20\d{2})\b/i) ||
     fullText.match(/(?:januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december)\s+(20\d{2})\b/i);
-  inferredYear = textYearMatch ? textYearMatch[1] : metaYear;
+  const filenameYearMatch = state.documentFile?.name?.match(/\b(20\d{2})\b/);
+const filenameSeasonMatch = state.documentFile?.name?.match(/\bF(\d{2})\b|\bE(\d{2})\b/i);
+const filenameYear = filenameYearMatch?.[1] ||
+  (filenameSeasonMatch ? `20${filenameSeasonMatch[1] ?? filenameSeasonMatch[2]}` : null);
+
+inferredYear = textYearMatch?.[1] || metaYear || filenameYear || "";
 
   state.inferredYear = inferredYear;
 
