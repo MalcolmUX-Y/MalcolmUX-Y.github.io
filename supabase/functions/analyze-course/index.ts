@@ -5,6 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
+const USE_AI_PIPELINE = false;
 
 type CourseInfoItem = {
   type: "course_info";
@@ -62,11 +63,19 @@ function isDateLine(line: string): boolean {
 }
 
 function extractDateFromLine(line: string): string | null {
-  const match = line.match(
+  // Format 1: "den 5.2." / "torsdag den 27.2." — prioriter numerisk format højest
+  const shortMatch = line.match(
+    /\b(?:(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\b\s+)?(?:d\.|den)\s*(\d{1,2})\.(\d{1,2})\.?(?!\d)/i,
+  );
+  if (shortMatch) return shortMatch[0];
+
+  // Format 2: "den 5. februar" / "torsdag den 5. februar"
+  const longMatch = line.match(
     /\b(?:(?:mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag)\b\s+)?(?:(?:d\.|den)\s*)?\d{1,2}\.?\s*(?:januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december|jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)\b/i,
   );
+  if (longMatch) return longMatch[0];
 
-  return match ? match[0] : null;
+  return null;
 }
 
 function looksLikeEventLine(line: string): boolean {
@@ -287,7 +296,7 @@ const bodyJoined = remainingLines.join("\n").trim();
       : afterDateRaw;
 
 const topicBoundaryRe =
-  /(?:(?:^|[\s,;])(?:•||‣|∙)\s+)|(?:\b(?:genstande?|supplerende|obs)\b\s*(?::|,|[-–])?)/i;
+  /(?:(?:^|[\s,;])(?:•||‣|∙)\s+)|(?:\b(?:litteratur|genstande?|supplerende|obs)\b\s*(?::|,|[-–])?)/i;
 
 const boundaryMatch = topicBoundaryRe.exec(afterDate);
 const boundaryIdx =
@@ -928,7 +937,7 @@ async function analyzeSegmentWithPipeline(
     }
   }
 
-  if (false && apiKey) {
+  if (USE_AI_PIPELINE && apiKey) {
     const extracted = await openAiExtractItemsFromSegment(apiKey, segment);
     if (extracted) {
       const normalized = extracted
