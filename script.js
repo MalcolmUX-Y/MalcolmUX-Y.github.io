@@ -143,6 +143,7 @@ async function extractPdfText(file) {
 
   // Text wins — metadata is fallback
   const textYearMatch =
+    fullText.match(/(?:mandag|tirsdag|onsdag|torsdag|fredag)[^.]{0,30}(?:januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december)[^\d]*(20\d{2})\b/i) ||
     fullText.match(/(?:januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december)\s+(20\d{2})\b/i) ||
     fullText.match(/\b(20\d{2})\b/);
   inferredYear = textYearMatch ? textYearMatch[1] : metaYear;
