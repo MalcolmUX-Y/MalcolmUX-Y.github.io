@@ -140,11 +140,11 @@ async function extractPdfText(file) {
     throw new Error("PDF'en blev læst, men der blev ikke fundet nogen tekst.");
   }
 
-  // Text wins — metadata is fallback
   const textYearMatch =
     fullText.match(/(?:mandag|tirsdag|onsdag|torsdag|fredag)[^.]{0,30}(?:januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december)[^\d]*(20\d{2})\b/i) ||
-    fullText.match(/(?:januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december)\s+(20\d{2})\b/i) ||
-    fullText.match(/\b(20\d{2})\b/);
+    fullText.match(/(?:mandag|tirsdag|onsdag|torsdag|fredag)[^.]{0,10}den\s+\d{1,2}\.\d{1,2}[^.]{0,10}(20\d{2})\b/i) ||
+    fullText.match(/[Ss]emesterplan\s+\S*(20\d{2})\b/i) ||
+    fullText.match(/(?:januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december)\s+(20\d{2})\b/i);
   inferredYear = textYearMatch ? textYearMatch[1] : metaYear;
 
   state.inferredYear = inferredYear;
