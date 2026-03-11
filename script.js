@@ -836,6 +836,8 @@ function renderDashboardStep() {
         </div>
 
         <div class="actions">
+          <button class="btn btn-secondary" id="exportTxtBtn">Eksporter TXT</button>
+          <button class="btn btn-secondary" id="exportHtmlBtn">Eksporter HTML</button>
           <button class="btn btn-secondary" id="restartFlowBtn">Start over</button>
         </div>
       </div>
@@ -846,6 +848,8 @@ function renderDashboardStep() {
     resetFlowState();
     renderApp();
   });
+  document.getElementById("exportTxtBtn").addEventListener("click", () => exportAsTxt(state.confirmedPlan));
+  document.getElementById("exportHtmlBtn").addEventListener("click", () => exportAsHtml(state.confirmedPlan));
 }
 
 function renderApp() {
