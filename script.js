@@ -871,5 +871,102 @@ function renderApp() {
       renderUploadStep();
   }
 }
+// ============================================================
+// EXPORT MODULE — indsæt i script.js lige før renderApp()
+// Berører ingen eksisterende kode. Tilføj også export-knapper
+// i renderDashboardStep() — se kommentar nederst.
+// ============================================================
 
+function exportAsTxt(plan) {
+  const lines = [];
+  lines.push(plan.title || "Untitled");
+  lines.push("=".repeat(40));
+  lines.push("");
+
+  (plan.weeks || []).forEach((week) => {
+    lines.push(`[${week.rawDate || week.date || "Ingen dato"}]`);
+    lines.push(week.topic || "");
+    if (week.readings?.length) {
+      lines.push("Litteratur:");
+      week.readings.forEach((r) => lines.push("  - " + r));
+    }
+    if (week.assignment) lines.push("Opgave: " + week.assignment);
+    lines.push("");
+  });
+
+  triggerDownload(lines.join("\n"), plan.title + ".txt", "text/plain");
+}
+
+function exportAsHtml(plan) {
+  const rows = (plan.weeks || [])
+    .map((week) => {
+      const readings = week.readings?.length
+        ? `<ul>${week.readings.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>`
+        : "—";
+      return `
+        <tr>
+          <td>${esc(week.rawDate || week.date || "—")}</td>
+          <td>${esc(week.topic || "—")}</td>
+          <td>${readings}</td>
+          <td>${esc(week.assignment || "—")}</td>
+        </tr>`;
+    })
+    .join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="da"><head><meta charset="UTF-8">
+<title>${esc(plan.title)}</title>
+<style>
+  body { font-family: system-ui, sans-serif; padding: 32px; color: #111; }
+  h1 { margin-bottom: 24px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { border: 1px solid #ddd; padding: 8px 12px; vertical-align: top; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  ul { margin: 0; padding-left: 16px; }
+</style>
+</head><body>
+<h1>${esc(plan.title)}</h1>
+<table>
+  <thead><tr><th>Dato</th><th>Emne</th><th>Litteratur</th><th>Opgave</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+</body></html>`;
+
+  triggerDownload(html, plan.title + ".html", "text/html");
+}
+
+// Hjælpefunktioner
+function esc(str) {
+  return (str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function triggerDownload(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================
+// I renderDashboardStep() — udskift .actions blokken med:
+//
+//   <div class="actions">
+//     <button class="btn btn-secondary" id="exportTxtBtn">Eksporter TXT</button>
+//     <button class="btn btn-secondary" id="exportHtmlBtn">Eksporter HTML</button>
+//     <button class="btn btn-secondary" id="restartFlowBtn">Start over</button>
+//   </div>
+//
+// Og tilføj efter de eksisterende event listeners:
+//
+//   document.getElementById("exportTxtBtn")
+//     .addEventListener("click", () => exportAsTxt(state.confirmedPlan));
+//   document.getElementById("exportHtmlBtn")
+//     .addEventListener("click", () => exportAsHtml(state.confirmedPlan));
+// ============================================================
 renderApp();
