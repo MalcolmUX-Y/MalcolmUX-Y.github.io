@@ -83,15 +83,26 @@ async function extractPdfText(file) {
     const page = await pdf.getPage(pageNumber);
     const textContent = await page.getTextContent();
 
-    const pageText = textContent.items
-      .map((item) => ("str" in item ? item.str : ""))
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
+    const items = textContent.items.filter((item) => "str" in item && item.str.trim());
+    if (!items.length) continue;
 
-    if (pageText) {
-      pageTexts.push(pageText);
+    const lines = [];
+    let currentLine = [];
+    let lastY = null;
+
+    for (const item of items) {
+      const y = Math.round(item.transform[5]);
+      if (lastY === null || Math.abs(y - lastY) > 3) {
+        if (currentLine.length) lines.push(currentLine.join(" ").trim());
+        currentLine = [item.str];
+        lastY = y;
+      } else {
+        currentLine.push(item.str);
+      }
     }
+    if (currentLine.length) lines.push(currentLine.join(" ").trim());
+
+    pageTexts.push(lines.filter(Boolean).join("\n"));
   }
 
   const fullText = pageTexts.join("\n\n").trim();
