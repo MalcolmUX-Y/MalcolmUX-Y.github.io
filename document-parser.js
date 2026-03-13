@@ -102,10 +102,19 @@ async function extractPdfText(file) {
     }
     if (currentLine.length) lines.push(currentLine.join(" ").trim());
 
-    pageTexts.push(lines.filter(Boolean).join("\n"));
+    const splitLines = [];
+    for (const line of lines) {
+      const parts = line.split(/(?=\bKl\.)/);
+      splitLines.push(...parts.map((p) => p.trim()).filter(Boolean));
+    }
+
+    pageTexts.push(splitLines.filter(Boolean).join("\n"));
   }
 
-  const fullText = pageTexts.join("\n\n").trim();
+  const fullText = pageTexts
+    .join("\n\n")
+    .trim()
+    .replace(/(?<!\n)(Kl\.)\s*(\d{1,2}[.:]\d{2})/g, "\n$1 $2");
 
   if (!fullText) {
     throw new Error("PDF'en blev læst, men der blev ikke fundet nogen tekst.");
