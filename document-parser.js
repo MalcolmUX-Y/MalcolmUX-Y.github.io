@@ -102,19 +102,17 @@ async function extractPdfText(file) {
     }
     if (currentLine.length) lines.push(currentLine.join(" ").trim());
 
-    const splitLines = [];
-    for (const line of lines) {
-      const parts = line.split(/(?=\bKl\.)/);
-      splitLines.push(...parts.map((p) => p.trim()).filter(Boolean));
-    }
-
-    pageTexts.push(splitLines.filter(Boolean).join("\n"));
+    pageTexts.push(lines.filter(Boolean).join("\n"));
   }
 
-  const fullText = pageTexts
-    .join("\n\n")
-    .trim()
-    .replace(/(?<!\n)(Kl\.)\s*(\d{1,2}[.:]\d{2})/g, "\n$1 $2");
+  let fullText = pageTexts.join("\n\n").trim();
+
+  // Normaliser mellemrum inde i tidsangivelser: "12. 00" → "12.00", "1 5.00" → "15.00"
+  fullText = fullText.replace(/(\d{1,2})\.\s+(\d{2})/g, "$1.$2");
+  fullText = fullText.replace(/(\d)\s(\d{1,2}\.\d{2})/g, "$1$2");
+
+  // Split på Kl. så hvert tidsslot starter på ny linje
+  fullText = fullText.replace(/\s+(Kl\.)\s*/g, "\n$1 ");
 
   if (!fullText) {
     throw new Error("PDF'en blev læst, men der blev ikke fundet nogen tekst.");
@@ -131,7 +129,6 @@ async function extractPdfText(file) {
     (filenameSeasonMatch ? `20${filenameSeasonMatch[1] ?? filenameSeasonMatch[2]}` : null);
 
   inferredYear = textYearMatch?.[1] || metaYear || filenameYear || "";
-
   state.inferredYear = inferredYear;
 
   return fullText;
