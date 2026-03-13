@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
-const USE_AI_PIPELINE = false;
+const USE_AI_PIPELINE = true;
 
 type CourseInfoItem = {
   type: "course_info";
@@ -34,6 +34,12 @@ type EventItem = {
 };
 
 type CourseItem = CourseInfoItem | SessionItem | EventItem;
+
+type ParserStrategy = {
+  name: string;
+  detect: (text: string) => boolean;
+  parse: (text: string, apiKey: string | null) => Promise<CourseItem[]>;
+};
 
 type SegmentTelemetry = {
   totalSegments: number;
@@ -735,6 +741,36 @@ function normalizeItem(item: any): CourseItem | null {
     };
   }
 
+  if (type === "document_info") {
+    return {
+      type: "course_info",
+      title: typeof item.title === "string" ? item.title : "",
+      teachers: Array.isArray(item.teachers)
+        ? item.teachers.filter((t: any) => typeof t === "string")
+        : typeof item.organizer === "string" && item.organizer
+        ? [item.organizer]
+        : [],
+      schedule: Array.isArray(item.schedule)
+        ? item.schedule.filter((t: any) => typeof t === "string")
+        : typeof item.location === "string" && item.location
+        ? [item.location]
+        : [],
+      notes: [item.notes, item.contact, item.date]
+        .filter((v) => typeof v === "string" && v)
+        .join(" | "),
+    };
+  }
+
+  if (type === "notes") {
+    return {
+      type: "event",
+      date: typeof item.date === "string" ? item.date : "",
+      title: typeof item.title === "string" ? item.title : "",
+      details: typeof item.details === "string" ? item.details : "",
+      sourceText: typeof item.sourceText === "string" ? item.sourceText : "",
+    };
+  }
+
   return null;
 }
 
@@ -865,34 +901,45 @@ function segmentText(fullText: string): string[] {
   return refined;
 }
 
-async function openAiExtractItemsFromSegment(
+async function openAiExtractFullDocument(
   apiKey: string,
-  segment: string,
+  fullText: string,
 ): Promise<any[] | null> {
-  const systemPrompt =
-    `You are a parser. Extract course schedule items from a segment of Danish course text.
-Return JSON ONLY, as an array of items.
-Each item must include:
-- type: "course_info" | "session" | "event"
-- For course_info: title, teachers[], schedule[], notes
-- For session: date, topic, readings[], assignment, notes, sourceText
-- For event: date, title, details, sourceText
-Always include sourceText as the exact source segment.
+  const systemPrompt = `You are a document structure extractor. Extract ALL structured items from the document with maximum granularity.
+Return JSON ONLY — an array of items. No markdown, no explanation.
 
-Rules:
-- readings[] is only for literature/pensum.
-- assignment is for exercises/tasks/prep objects.
-- notes is for OBS, supplementary, logistics.`;
+Each item must have a "type" field:
+- "document_info": overall document metadata (title, organizer, location, date, contact info)
+- "session": EVERY individual time slot, agenda point, or program item — one item per time slot
+- "event": deadlines, reminders, or standalone notices
+- "notes": practical info, logistics, pricing, parking, certificates etc.
 
-  const userPrompt = `SEGMENT:\n${segment}`;
+For document_info: { type, title, organizer, location, date, contact, notes }
+For session: { type, date, time, topic, description, speaker, notes, sourceText }
+For event: { type, date, title, details, sourceText }
+For notes: { type, title, details, sourceText }
+
+CRITICAL RULES:
+- Each "Kl. XX.XX" time slot MUST be a separate session item — it is strictly forbidden to merge multiple time slots into a single item
+- The input text may have garbled spacing inside time patterns like "Kl. 12. 00" or "Kl. 1 5.00" — these are caused by PDF extraction. Reconstruct the correct time by ignoring spaces inside numbers, so "Kl. 12. 00" becomes 12.00 and "Kl. 1 5.00" becomes 15.00. Each reconstructed time slot is a SEPARATE session item
+- date: the main event date from the document header (e.g. "19.3.2026")
+- time: exact time range as written (e.g. "09.30-12.00")
+- topic: the title or heading of the slot
+- description: full body text, details, context
+- speaker: full name and title if mentioned
+- notes: practical logistics for that specific slot
+- sourceText: the exact source text for this item
+- Extract ALL practical info (parking, pricing, certificates, contact persons) as separate "notes" items
+- Never discard any information from the document`;
 
   const body = {
     model: "gpt-4o-mini",
     messages: [
       { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
+      { role: "user", content: fullText },
     ],
     temperature: 0,
+    max_tokens: 4000,
   };
 
   const resp = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -908,7 +955,8 @@ Rules:
 
   const data = await resp.json();
   const content = extractTextOutput(data);
-  const parsed = safeJsonParse<any[]>(content);
+  const clean = content.replace(/```json|```/g, "").trim();
+  const parsed = safeJsonParse<any[]>(clean);
   if (!parsed || !Array.isArray(parsed)) return null;
 
   return parsed;
@@ -938,23 +986,7 @@ async function analyzeSegmentWithPipeline(
   }
 
   if (USE_AI_PIPELINE && apiKey) {
-    const extracted = await openAiExtractItemsFromSegment(apiKey, segment);
-    if (extracted) {
-      const normalized = extracted
-        .map((item) => normalizeItem(item))
-        .filter((x): x is CourseItem => !!x)
-        .filter((item) => {
-          const src = (item as any).sourceText || segment;
-          if (isDateTimeOnlySegment(src)) return false;
-          if (item.type === "event") return !hasMeaningfulSessionSignal(src);
-          if (item.type === "session") return hasMeaningfulSessionSignal(src);
-          return true;
-        });
-
-      if (normalized.length) {
-        return recordSegmentYield(telemetry, normalized);
-      }
-    }
+    // no-op: full-document AI extraction is handled at the strategy level
   }
 
   telemetry.localParsedSegments += 1;
@@ -988,29 +1020,27 @@ async function analyzeCourseText(
   fullText: string,
   apiKey: string | null,
 ): Promise<AnalyzeResponse> {
- const segments = segmentText(fullText);
+  fullText = fullText
+    .replace(/(\d)\s+(\d)/g, "$1$2")
+    .replace(/\s+(Kl\.)\s*(\d)/g, "\n$1 $2");
 
-const debugSegments = segments.slice(0, 5);
-const debugSignals = debugSegments.map((segment) => ({
-  rawSegmentText: segment,
-  hasMeaningfulSessionSignal: hasMeaningfulSessionSignal(segment),
-  looksLikeSession: looksLikeSession(segment),
-  looksLikeEvent: looksLikeEvent(segment),
-}));
+  const debugSegments = segmentText(fullText).slice(0, 5);
+  const debugSignals = debugSegments.map((segment) => ({
+    rawSegmentText: segment,
+    hasMeaningfulSessionSignal: hasMeaningfulSessionSignal(segment),
+    looksLikeSession: looksLikeSession(segment),
+    looksLikeEvent: looksLikeEvent(segment),
+  }));
 
-const telemetry: SegmentTelemetry = {
-  totalSegments: segments.length,
-  extractedSegments: 0,
-  localParsedSegments: 0,
-  yieldedItems: 0,
-};
+  const strategy = PARSER_STRATEGIES.find((s) => s.detect(fullText));
 
-const items: CourseItem[] = [];
+  if (!strategy) {
+    return { segmentCount: 0, items: [] } as any;
+  }
 
-for (const segment of segments) {
-  const yielded = await analyzeSegmentWithPipeline(apiKey, segment, telemetry);
-  items.push(...yielded);
-}
+  const items = await strategy.parse(fullText, apiKey);
+
+  const segmentCount = segmentText(fullText).length;
 
   const normalized = items
     .map((item) => normalizeItem(item))
@@ -1019,12 +1049,52 @@ for (const segment of segments) {
   const cleaned = cleanAndMergeItems(normalized);
 
   return {
-  segmentCount: segments.length,
-  items: cleaned,
-  debugSegments,
-  debugSignals,
-} as any;
+    segmentCount,
+    items: cleaned,
+    debugSegments,
+    debugSignals,
+  } as any;
 }
+
+// ─── Parser strategies ────────────────────────────────────────────────────────
+
+const danishCourseStrategy: ParserStrategy = {
+  name: "danish-course",
+  detect: (_text: string) => true, // catch-all
+  parse: async (text: string, apiKey: string | null): Promise<CourseItem[]> => {
+    if (USE_AI_PIPELINE && apiKey) {
+      const extracted = await openAiExtractFullDocument(apiKey, text);
+      if (extracted) {
+        const normalized = extracted
+          .map((item: any) => normalizeItem(item))
+          .filter((x: any): x is CourseItem => !!x);
+        if (normalized.length) return normalized;
+      }
+    }
+
+    const segments = segmentText(text);
+
+    const telemetry: SegmentTelemetry = {
+      totalSegments: segments.length,
+      extractedSegments: 0,
+      localParsedSegments: 0,
+      yieldedItems: 0,
+    };
+
+    const items: CourseItem[] = [];
+
+    for (const segment of segments) {
+      const yielded = await analyzeSegmentWithPipeline(apiKey, segment, telemetry);
+      items.push(...yielded);
+    }
+
+    return items;
+  },
+};
+
+const PARSER_STRATEGIES: ParserStrategy[] = [
+  danishCourseStrategy,
+];
 
 function getEnv(name: string): string | null {
   try {
